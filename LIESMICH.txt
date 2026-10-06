@@ -1,0 +1,30 @@
+Belege-App – Steuerbelege scannen, sortieren, als Excel exportieren
+====================================================================
+
+Was ist das?
+  Eine Web-App (PWA) für das Handy. Sie wird einmal über Chrome geöffnet und
+  dann über "Zum Startbildschirm hinzufügen" / "App installieren" wie eine
+  normale App installiert. Kein App-Store, keine Kosten, kein Konto.
+
+Datenschutz
+  Fotos, Beträge und Kategorien bleiben ausschließlich auf dem Handy
+  (Browser-Speicher). Die Texterkennung (Tesseract) läuft auf dem Handy,
+  auch ohne Internet. Der Programmcode auf GitHub enthält keine Belege.
+
+Bedienung
+  📷 unten       Beleg fotografieren oder Bild/PDF auswählen
+  Adobe Scan     Scan öffnen > Teilen > "Belege"
+  Sortieren      Betrag prüfen, Kategorie antippen = gespeichert
+  Übersicht      Summen je Kategorie und Monat, Jahr wählbar
+  Mehr           Excel / ZIP für den Steuerberater, Kategorien ändern,
+                 Datensicherung speichern und wiederherstellen
+
+Wichtig
+  Ab und zu unter "Mehr" eine Datensicherung speichern (z. B. in Google
+  Drive). Wer Chrome-Daten löscht oder das Handy wechselt, braucht sie.
+
+Technik
+  index.html, app.js, extract.js (Betrag/Datum/Händler/Kategorie-Vorschlag),
+  style.css, sw.js (Offline + Teilen-Empfang), manifest.webmanifest,
+  vendor/ (Tesseract.js 5, deutsche Sprachdaten, ExcelJS, JSZip, pdf.js).
+  Läuft auf jedem HTTPS-Webspace, z. B. GitHub Pages.

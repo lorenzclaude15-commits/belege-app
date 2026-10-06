@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Belege</title>
+<meta name="theme-color" content="#0f766e">
+<meta name="description" content="Steuerbelege scannen, sortieren und als Excel für den Steuerberater exportieren">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1 id="title">Übersicht</h1>
+  <div id="ocrStatus" class="ocr-status" hidden><span class="spinner"></span><span id="ocrStatusText">Lese Beleg …</span></div>
+</header>
+
+<main>
+  <section id="view-home" class="view"></section>
+  <section id="view-inbox" class="view" hidden></section>
+  <section id="view-list" class="view" hidden></section>
+  <section id="view-more" class="view" hidden></section>
+</main>
+
+<nav class="bottomnav">
+  <button data-view="home" class="active"><span class="ico">📊</span><span>Übersicht</span></button>
+  <button data-view="inbox"><span class="ico">📥</span><span>Sortieren</span><b id="inboxBadge" class="badge" hidden>0</b></button>
+  <button id="scanBtn" class="fab" aria-label="Beleg scannen"><span>📷</span></button>
+  <button data-view="list"><span class="ico">🧾</span><span>Belege</span></button>
+  <button data-view="more"><span class="ico">⚙️</span><span>Mehr</span></button>
+</nav>
+
+<input id="camInput" type="file" accept="image/*" capture="environment" hidden>
+<input id="pickInput" type="file" accept="image/*,application/pdf" multiple hidden>
+<input id="restoreInput" type="file" accept=".zip,application/zip" hidden>
+
+<dialog id="scanSheet" class="sheet">
+  <h2>Beleg hinzufügen</h2>
+  <button class="big primary" id="scanCam">📷 Foto aufnehmen</button>
+  <button class="big" id="scanPick">🖼️ Aus Galerie oder PDF wählen</button>
+  <p class="hint">Aus <b>Adobe Scan</b>: dort auf „Teilen“ tippen und <b>Belege</b> wählen. Der Scan landet direkt hier im Sortieren.</p>
+  <button class="text" data-close>Abbrechen</button>
+</dialog>
+
+<dialog id="editDlg" class="sheet tall">
+  <div id="editBody"></div>
+</dialog>
+
+<dialog id="imgDlg" class="viewer">
+  <div id="imgBody"></div>
+  <button class="close" data-close aria-label="Schließen">✕</button>
+</dialog>
+
+<dialog id="deliverDlg" class="sheet">
+  <h2 id="deliverTitle">Datei ist fertig</h2>
+  <p id="deliverInfo" class="hint"></p>
+  <button class="big primary" id="deliverSave">⬇️ Herunterladen</button>
+  <button class="big" id="deliverShare" hidden>📤 Teilen (Mail, WhatsApp …)</button>
+  <button class="text" data-close>Schließen</button>
+</dialog>
+
+<div id="toast" class="toast" hidden><span id="toastText"></span><button id="toastAction" hidden></button></div>
+
+<script src="extract.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
