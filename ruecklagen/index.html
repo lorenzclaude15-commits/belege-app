@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rücklagen</title>
+<meta name="theme-color" content="#0f766e">
+<meta name="description" content="Vom Brutto zur sicheren Netto-Entnahme: Steuer, Kredit, Versorgungswerk und Versicherungen im Blick">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1 id="title">Start</h1>
+  <button id="lockBtn" class="small-btn" aria-label="Sperren">🔒</button>
+</header>
+
+<main>
+  <section id="view-home" class="view"></section>
+  <section id="view-year" class="view" hidden></section>
+  <section id="view-house" class="view" hidden></section>
+  <section id="view-more" class="view" hidden></section>
+</main>
+
+<nav class="bottomnav">
+  <button data-view="home" class="active"><span class="ico">🏠</span><span>Start</span></button>
+  <button data-view="year"><span class="ico">📊</span><span>Bilanz</span></button>
+  <button id="addBtn" class="fab" aria-label="Eingang erfassen"><span>＋</span></button>
+  <button data-view="house"><span class="ico">🛒</span><span>Haushalt</span></button>
+  <button data-view="more"><span class="ico">⚙️</span><span>Mehr</span></button>
+</nav>
+
+<dialog id="entryDlg" class="sheet tall"><div id="entryBody"></div></dialog>
+
+<dialog id="deliverDlg" class="sheet">
+  <h2 id="deliverTitle">Datei ist fertig</h2>
+  <p id="deliverInfo" class="hint"></p>
+  <button class="big primary" id="deliverSave">⬇️ Herunterladen</button>
+  <button class="big" id="deliverShare" hidden>📤 Teilen (Mail, Drive …)</button>
+  <button class="text" data-close>Schließen</button>
+</dialog>
+
+<div id="lock" class="lock" hidden></div>
+<div id="toast" class="toast" hidden><span id="toastText"></span><button id="toastAction" hidden></button></div>
+<input id="restoreInput" type="file" accept=".json,application/json" hidden>
+
+<script src="calc.js"></script>
+<script src="store.js"></script>
+<script src="sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

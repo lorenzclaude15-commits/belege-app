@@ -1,0 +1,22 @@
+Rücklagen-App – vom Brutto zur sicheren Netto-Entnahme
+=======================================================
+
+Was ist das?
+  Eine Web-App (PWA) für Handy und PC. Einmal in Chrome öffnen und über
+  "App installieren" / "Zum Startbildschirm hinzufügen" installieren.
+
+Was sie kann
+  Start      Brutto eingeben, sehen was nach Steuer, Kredit, Ärzteversorgung
+             und Versicherungen als Netto entnommen werden darf. Warnung,
+             wenn eine Entnahme darüber liegt.
+  Bilanz     Monat / Quartal / Jahr / bis heute, Rücklagen-Check, Prognose,
+             Versicherungen einzeln, Termine (Steuervorauszahlungen abhaken),
+             Excel-Export.
+  Haushalt   Monatliche Haushaltskosten, die vom Netto bezahlt werden.
+  Mehr       Alle Werte, Versicherungen, Sicherung, PC-Synchronisation, PIN.
+
+Datenschutz
+  Alle Zahlen liegen nur verschlüsselt (AES-256, Schlüssel aus der PIN) im
+  Browser-Speicher des Geräts. Der Programmcode hier enthält keine Daten.
+  Die Synchronisation legt nur einen verschlüsselten Block in einem geheimen
+  GitHub-Gist ab, lesbar nur mit dem Sync-Passwort.
