@@ -227,7 +227,7 @@ function entryRow(e) {
 function dueRow(i) {
   const [y, m, d] = i.date.split('-');
   const past = i.date < todayIso();
-  const ic = { tax: '🏛️', vw: '🩺', loan: '🏦', ins: '🛡️' }[i.kind];
+  const ic = i.kind === 'ins' && /kammer|verband/i.test(i.name) ? '🏥' : { tax: '🏛️', vw: '🩺', loan: '🏦', ins: '🛡️' }[i.kind];
   const tax = i.kind === 'tax';
   return `<div class="due ${past && (!tax || i.paid) ? 'past' : ''}">
     <div class="d"><b>${d}</b><span>${MONTHS[+m - 1]}</span></div>
@@ -352,7 +352,7 @@ function renderYear() {
     </div>
 
     <div class="card">
-      <h2>Versicherungen</h2>
+      <h2>Versicherungen &amp; Beiträge</h2>
       <div class="scroll-x"><table class="tbl">
         <tr><th>Versicherung</th><th>Monat</th><th>Quartal</th><th>Jahr</th><th>bis heute</th></tr>
         ${it.rows.map(x => `<tr><td>${esc(x.name)}<div class="small muted">${x.interval} · ${x.praxis ? 'Praxis' : 'privat'}</div></td><td>${eur(x.month)}</td><td>${eur(x.quarter)}</td><td>${eur(x.year)}</td><td>${eur(x.toDate)}</td></tr>`).join('')}
@@ -372,9 +372,9 @@ function renderYear() {
     <div class="card">
       <h2>Termine ${year}</h2>
       <p class="hint small">Steuervorauszahlungen abhaken, wenn bezahlt. Betrag antippen zum Ändern.</p>
-      ${sched.filter(i => i.kind === 'tax' || i.kind === 'vw').map(i => i.kind === 'tax' ? taxRow(i) : dueRow(i)).join('')}
+      ${sched.filter(i => i.kind === 'tax' || i.kind === 'vw' || isFee(i)).map(i => i.kind === 'tax' ? taxRow(i) : dueRow(i)).join('')}
       <details><summary class="text" style="padding:12px 0;color:var(--primary);font-weight:600">Alle Lastschriften für Kredit und Versicherungen</summary>
-        ${sched.filter(i => i.kind === 'loan' || i.kind === 'ins').map(dueRow).join('')}</details>
+        ${sched.filter(i => i.kind === 'loan' || (i.kind === 'ins' && !isFee(i))).map(dueRow).join('')}</details>
     </div>
 
     <button class="big primary" id="xlsBtn">📗 Excel für ${year} erstellen</button>`;
@@ -389,6 +389,7 @@ function renderYear() {
   $('#xlsBtn').onclick = () => exportExcel(year);
 }
 
+const isFee = i => i.kind === 'ins' && /kammer|verband/i.test(i.name);
 function taxRow(i) {
   const [y, m, d] = i.date.split('-');
   const late = !i.paid && i.date < todayIso();
@@ -478,13 +479,14 @@ function renderMore() {
     </div>
 
     <div class="card">
-      <h2>Versicherungen</h2>
-      <p class="hint small">Beitrag so eintragen, wie er abgebucht wird. „Praxis“ wird vor der Entnahme vom Brutto zurückgelegt, „Privat“ (z. B. PKV) zahlst du danach vom Netto.</p>
+      <h2>Versicherungen &amp; Beiträge</h2>
+      <p class="hint small">Auch Kammerbeiträge gehören hierher. Bei jährlichen Posten kannst du den Fälligkeitstag eintragen (TT.MM). Beitrag so eintragen, wie er abgebucht wird. „Praxis“ wird vor der Entnahme vom Brutto zurückgelegt, „Privat“ (z. B. PKV) zahlst du danach vom Netto.</p>
       ${Calc.live(data.insurances).map(i => `<div class="edrow">
         <input data-iname="${i.id}" value="${esc(i.name)}">
         <input class="num" inputmode="decimal" data-iamt="${i.id}" value="${numStr(i.amount)}" placeholder="0">
         <select data-iint="${i.id}">${Object.entries(Calc.INTERVAL_NAME).map(([k, l]) => `<option value="${k}" ${i.interval === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <select data-ipx="${i.id}"><option value="1" ${Calc.isPraxis(i) ? 'selected' : ''}>Praxis: vom Brutto</option><option value="0" ${Calc.isPraxis(i) ? '' : 'selected'}>Privat: vom Netto</option></select>
+        ${i.interval === 'y' ? `<input data-idue="${i.id}" placeholder="fällig am TT.MM (optional)" value="${i.due ? i.due.split('-').reverse().join('.') : ''}">` : ''}
         <button data-idel="${i.id}" aria-label="löschen">✕</button></div>`).join('')}
       <button class="text" id="insAdd">＋ Versicherung hinzufügen</button>
     </div>
@@ -526,6 +528,10 @@ function renderMore() {
   el.querySelectorAll('[data-iname]').forEach(i => i.onchange = () => touch(i.dataset.iname, { name: i.value }));
   el.querySelectorAll('[data-iamt]').forEach(i => i.onchange = () => touch(i.dataset.iamt, { amount: parseNum(i.value) }));
   el.querySelectorAll('[data-iint]').forEach(i => i.onchange = () => touch(i.dataset.iint, { interval: i.value }));
+  el.querySelectorAll('[data-idue]').forEach(i => i.onchange = () => {
+    const m = i.value.trim().match(/^(\d{1,2})\.(\d{1,2})\.?$/);
+    touch(i.dataset.idue, { due: m ? `${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '' });
+  });
   el.querySelectorAll('[data-ipx]').forEach(i => i.onchange = () => touch(i.dataset.ipx, { praxis: i.value === '1' }));
   el.querySelectorAll('[data-idel]').forEach(b => b.onclick = () => { if (confirm('Versicherung entfernen?')) touch(b.dataset.idel, { deleted: true }); });
   $('#insAdd').onclick = () => { data.insurances.push({ id: uid(), name: 'Neue Versicherung', amount: 0, interval: 'm', praxis: false, updatedAt: Date.now() }); persist(); };

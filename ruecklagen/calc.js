@@ -101,8 +101,12 @@
         for (const i of live(data.insurances)) {
           if (!num(i.amount)) continue;
           const first = m === w.from.getMonth();
-          const due = i.interval === 'm' || (i.interval === 'q' && (m % 3 === 0 || first)) || (i.interval === 'y' && first);
-          if (due) out.push({ key: `ins:${i.id}:${ym}`, date: `${ym}-01`, kind: 'ins', insId: i.id, name: i.name, amount: num(i.amount) });
+          // Jährliche Posten mit festem Termin (z. B. Kammerbeitrag "04-30"); liegt der Termin vor dem Start, dann im ersten Monat
+          const [dm, dd] = i.interval === 'y' && /^\d{2}-\d{2}$/.test(i.due || '') ? i.due.split('-').map(Number) : [0, 1];
+          const yearMonth = dm && dm - 1 >= w.from.getMonth() ? dm - 1 : w.from.getMonth();
+          const due = i.interval === 'm' || (i.interval === 'q' && (m % 3 === 0 || first)) || (i.interval === 'y' && m === yearMonth);
+          const day = String(Math.min(i.interval === 'y' && m === dm - 1 ? dd : 1, daysIn(year, m))).padStart(2, '0');
+          if (due) out.push({ key: `ins:${i.id}:${ym}`, date: `${ym}-${day}`, kind: 'ins', insId: i.id, name: i.name, amount: num(i.amount) });
         }
       }
     }

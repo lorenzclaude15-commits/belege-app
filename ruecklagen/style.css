@@ -269,3 +269,4 @@ details summary::-webkit-details-marker { display: none; }
 .edrow:not(.hh) > [data-idel] { grid-row: 1; grid-column: 3; }
 .edrow [data-ipx] { grid-column: 1 / 4; }
 .edrow:not(.hh) { padding: 10px 0; }
+.edrow [data-idue] { grid-column: 1 / 4; }
