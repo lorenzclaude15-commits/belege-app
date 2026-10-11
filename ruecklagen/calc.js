@@ -16,7 +16,9 @@
     return num(s.taxableIncome) > 0 ? num(s.taxAmount) / num(s.taxableIncome) : 0;
   }
   function insMonthly(i) { return num(i.amount) * (FACTOR[i.interval] ?? 1); }
-  function insMonthlyTotal(data) { return live(data.insurances).reduce((a, i) => a + insMonthly(i), 0); }
+  // Praxis-Versicherungen gehen vom Brutto ab, private (z. B. PKV) erst vom Netto
+  function isPraxis(i) { return i.praxis ?? /praxis|rechtss?chutz/i.test(i.name || ''); }
+  function insMonthlyTotal(data, praxis = true) { return live(data.insurances).filter(i => isPraxis(i) === praxis).reduce((a, i) => a + insMonthly(i), 0); }
 
   // Zeitraum des Jahres, in dem die Praxis läuft (ab Startdatum)
   function span(data, year) {
@@ -109,7 +111,7 @@
   function totals(data, year, from, to) {
     const q = taxRate(data.settings);
     const ents = entriesOf(data, year).filter(e => e.date >= from && e.date <= to);
-    const t = { brutto: 0, netto: 0, taxReserve: 0, taxPaid: 0, taxDue: 0, vw: 0, loan: 0, ins: 0, kv: 0, byIns: {} };
+    const t = { brutto: 0, netto: 0, taxReserve: 0, taxPaid: 0, taxDue: 0, vw: 0, loan: 0, ins: 0, insPraxis: 0, kv: 0, byIns: {} };
     for (const e of ents) { t.brutto += num(e.brutto); t.netto += num(e.netto); }
     t.taxReserve = t.brutto * q;
     for (const it of schedule(data, year)) {
@@ -118,6 +120,8 @@
       else if (it.kind === 'ins') {
         t.ins += it.amount; t.byIns[it.insId] = (t.byIns[it.insId] || 0) + it.amount;
         if (isKV(data, it.insId)) t.kv += it.amount;
+        const ins = live(data.insurances).find(x => x.id === it.insId);
+        if (ins && isPraxis(ins)) t.insPraxis += it.amount;
       } else t[it.kind] += it.amount;
     }
     return t;
@@ -135,7 +139,7 @@
     const paid = totals(data, year, `${year}-01-01`, iso(asOf)).byIns;
     const rows = live(data.insurances).map(i => {
       const m = insMonthly(i);
-      return { id: i.id, name: i.name, interval: INTERVAL_NAME[i.interval] || '', month: m, quarter: m * 3, year: m * months, toDate: paid[i.id] || 0 };
+      return { id: i.id, name: i.name, praxis: isPraxis(i), interval: INTERVAL_NAME[i.interval] || '', month: m, quarter: m * 3, year: m * months, toDate: paid[i.id] || 0 };
     });
     const sum = rows.reduce((a, r) => ({ month: a.month + r.month, quarter: a.quarter + r.quarter, year: a.year + r.year, toDate: a.toDate + r.toDate }), { month: 0, quarter: 0, year: 0, toDate: 0 });
     return { rows, sum, months };
@@ -171,7 +175,8 @@
   function household(data) {
     return live(data.household).reduce((a, h) => a + num(h.amount), 0);
   }
+  function privateIns(data) { return insMonthlyTotal(data, false); }
 
-  const api = { iso, parse, taxRate, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, live, INTERVAL_NAME };
+  const api = { iso, parse, taxRate, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
   if (typeof module !== 'undefined') module.exports = api; else root.Calc = api;
 })(this);

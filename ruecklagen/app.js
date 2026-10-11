@@ -27,7 +27,7 @@ const D = () => Store.data;
 
 function defaults() {
   const y = new Date().getFullYear(), t = Date.now();
-  const ins = (name, interval, kv) => ({ id: uid(), name, amount: 0, interval, kv: !!kv, updatedAt: t });
+  const ins = (name, interval, kv, praxis) => ({ id: uid(), name, amount: 0, interval, kv: !!kv, praxis: !!praxis, updatedAt: t });
   return {
     v: 1,
     settings: {
@@ -36,7 +36,7 @@ function defaults() {
     },
     insurances: [
       ins('Private Krankenversicherung', 'm', true), ins('Berufsunfähigkeit', 'm'), ins('Lebensversicherung', 'y'),
-      ins('Praxisausfallversicherung', 'y'), ins('Rechtsschutz', 'y'), ins('Unfallversicherung', 'y'), ins('Privathaftpflicht', 'y'),
+      ins('Praxisausfallversicherung', 'y', false, true), ins('Rechtsschutz', 'y', false, true), ins('Unfallversicherung', 'y'), ins('Privathaftpflicht', 'y'),
     ],
     household: ['Haushalt / Essen', 'Miete', 'Unterhalt', 'Auto-Versicherung', 'Benzin'].map(name => ({ id: uid(), name, amount: 0, updatedAt: t })),
     entries: [],
@@ -170,7 +170,7 @@ function renderHome() {
 
   el.innerHTML = `
     ${needsSetup() ? `<button class="banner" id="goSetup"><span style="font-size:26px">⚙️</span><span><b>Erst Werte eintragen</b><br><span class="small">Unter „Mehr“: Steuer, Kredit, Versorgungswerk, Versicherungen</span></span></button>` : ''}
-    ${!okNow ? `<div class="alert"><b>⚠️ Zu viel entnommen</b>Du hast ${eur(-chk.available)} mehr entnommen, als nach Steuer, Kredit, Versorgungswerk und Versicherungen bis heute übrig ist.</div>` : ''}
+    ${!okNow ? `<div class="alert"><b>⚠️ Zu viel entnommen</b>Du hast ${eur(-chk.available)} mehr entnommen, als nach Steuer, Kredit, Versorgungswerk und Praxis-Versicherungen bis heute übrig ist.</div>` : ''}
     ${over.length ? `<div class="alert"><b>⚠️ ${over.length} ${over.length === 1 ? 'Entnahme liegt' : 'Entnahmen liegen'} über dem Vorschlag</b>Zusammen ${eur(over.reduce((a, e) => a + e.netto - e.suggested, 0))} zu viel. Details unten in der Liste.</div>` : ''}
     <div class="card hero">
       <div class="lbl">Jetzt noch sicher entnehmbar (${year})</div>
@@ -184,7 +184,7 @@ function renderHome() {
         <input id="calcIn" class="amount-input" inputmode="decimal" placeholder="0" autocomplete="off"></label>
       <div class="breakdown" id="calcOut"></div>
       <button class="big primary" id="calcBook">Als Eingang buchen</button>
-      <p class="hint small">Regel ${year}: ${pct(r.net)} vom Brutto darfst du entnehmen (Steuer ${pct(r.tax)}, Kredit ${pct(r.loan)}, Versorgungswerk ${pct(r.vw)}, Versicherungen ${pct(r.ins)}).</p>
+      <p class="hint small">Regel ${year}: ${pct(r.net)} vom Brutto darfst du entnehmen (Steuer ${pct(r.tax)}, Kredit ${pct(r.loan)}, Versorgungswerk ${pct(r.vw)}, Praxis-Versicherungen ${pct(r.ins)}). PKV und private Versicherungen zahlst du danach vom Netto.</p>
     </div>
 
     <div class="card">
@@ -212,7 +212,7 @@ function breakdownHtml(b, x) {
     <div class="ln"><span class="m">− Steuer + Soli</span><span class="m">${eur(x.tax)}</span></div>
     <div class="ln"><span class="m">− Kredit</span><span class="m">${eur(x.loan)}</span></div>
     <div class="ln"><span class="m">− Ärzteversorgung</span><span class="m">${eur(x.vw)}</span></div>
-    <div class="ln"><span class="m">− Versicherungen inkl. PKV</span><span class="m">${eur(x.ins)}</span></div>
+    <div class="ln"><span class="m">− Praxis-Versicherungen</span><span class="m">${eur(x.ins)}</span></div>
     <div class="ln sum"><span>Netto-Entnahme</span><span>${eur(x.netto)}</span></div>`;
 }
 
@@ -262,7 +262,7 @@ function openEntry(id, brutto) {
     if (!touched) $('#eNetto').value = numStr(Math.floor(x.netto));
     const n = parseNum($('#eNetto').value);
     $('#eWarn').innerHTML = n - x.netto > 0.5
-      ? `<div class="alert"><b>⚠️ ${eur(n - x.netto)} über dem Vorschlag</b>Dann reicht das Brutto nicht mehr für Steuer, Kredit, Versorgungswerk und Versicherungen.</div>` : '';
+      ? `<div class="alert"><b>⚠️ ${eur(n - x.netto)} über dem Vorschlag</b>Dann reicht das Brutto nicht mehr für Steuer, Kredit, Versorgungswerk und Praxis-Versicherungen.</div>` : '';
   };
   $('#eBrutto').oninput = upd; $('#eDate').oninput = upd;
   $('#eNetto').oninput = () => { touched = true; upd(); };
@@ -330,7 +330,7 @@ function renderYear() {
         <div class="ln"><span class="m">− Steuer-Rücklage</span><span class="m">${eur(chk.need.tax)}</span></div>
         <div class="ln"><span class="m">− Kredit (anteilig)</span><span class="m">${eur(chk.need.loan)}</span></div>
         <div class="ln"><span class="m">− Ärzteversorgung (anteilig)</span><span class="m">${eur(chk.need.vw)}</span></div>
-        <div class="ln"><span class="m">− Versicherungen (anteilig)</span><span class="m">${eur(chk.need.ins)}</span></div>
+        <div class="ln"><span class="m">− Praxis-Versicherungen (anteilig)</span><span class="m">${eur(chk.need.ins)}</span></div>
         <div class="ln"><span>= sicher entnehmbar</span><span>${eur(chk.safe)}</span></div>
         <div class="ln"><span class="m">− schon entnommen</span><span class="m">${eur(chk.netto)}</span></div>
         <div class="ln sum"><span>${chk.available >= 0 ? 'Noch frei' : 'Zu viel entnommen'}</span><span style="color:var(${chk.available >= 0 ? '--ok' : '--danger'})">${eur(chk.available)}</span></div>
@@ -354,7 +354,7 @@ function renderYear() {
       <h2>Versicherungen</h2>
       <div class="scroll-x"><table class="tbl">
         <tr><th>Versicherung</th><th>Monat</th><th>Quartal</th><th>Jahr</th><th>bis heute</th></tr>
-        ${it.rows.map(x => `<tr><td>${esc(x.name)}<div class="small muted">${x.interval}</div></td><td>${eur(x.month)}</td><td>${eur(x.quarter)}</td><td>${eur(x.year)}</td><td>${eur(x.toDate)}</td></tr>`).join('')}
+        ${it.rows.map(x => `<tr><td>${esc(x.name)}<div class="small muted">${x.interval} · ${x.praxis ? 'Praxis' : 'privat'}</div></td><td>${eur(x.month)}</td><td>${eur(x.quarter)}</td><td>${eur(x.year)}</td><td>${eur(x.toDate)}</td></tr>`).join('')}
         <tr class="sum"><td>Summe</td><td>${eur(it.sum.month)}</td><td>${eur(it.sum.quarter)}</td><td>${eur(it.sum.year)}</td><td>${eur(it.sum.toDate)}</td></tr>
       </table></div>
       <p class="hint small">„Jahr“ = ${it.months} Monate ab Start. „bis heute“ = tatsächlich fällig gewordene Beiträge.</p>
@@ -410,20 +410,30 @@ function renderHouse() {
   const chk = Calc.check(data, year, today());
   const months = Math.max(1, chk.monthsEq);
   const avgNet = chk.netto / months;
-  const hh = Calc.household(data);
+  const hh = Calc.household(data), priv = Calc.privateIns(data);
+  const privList = Calc.live(data.insurances).filter(i => !Calc.isPraxis(i) && +i.amount);
   const r = Calc.rule(data, year);
   const planNet = (+data.settings.expectedBrutto || 0) * r.net / (r.months || 12);
   el.innerHTML = `
     <div class="card hero">
       <div class="lbl">Nach Haushalt frei pro Monat</div>
-      <div class="total ${avgNet - hh >= 0 ? 'ok' : 'bad'}">${eur(avgNet - hh)}</div>
-      <div class="small muted">Ø entnommen ${eur(avgNet)} − Haushalt ${eur(hh)}</div>
+      <div class="total ${avgNet - hh - priv >= 0 ? 'ok' : 'bad'}">${eur(avgNet - hh - priv)}</div>
+      <div class="small muted">Ø entnommen ${eur(avgNet)} − PKV &amp; private Versicherungen ${eur(priv)} − Haushalt ${eur(hh)}</div>
     </div>
     <div class="card">
       <div class="breakdown">
         <div class="ln"><span>Netto möglich laut Prognose / Monat</span><span>${eur(planNet)}</span></div>
+        <div class="ln"><span class="m">− PKV &amp; private Versicherungen / Monat</span><span class="m">${eur(priv)}</span></div>
         <div class="ln"><span class="m">− Haushalt / Monat</span><span class="m">${eur(hh)}</span></div>
-        <div class="ln sum"><span>Rest laut Prognose</span><span>${eur(planNet - hh)}</span></div>
+        <div class="ln sum"><span>Rest laut Prognose</span><span>${eur(planNet - priv - hh)}</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Vom Netto: PKV &amp; private Versicherungen</h2>
+      <div class="breakdown">
+        ${privList.map(i => `<div class="ln"><span>${esc(i.name)}</span><span>${eur(Calc.insMonthly(i))} / Monat</span></div>`).join('') || '<p class="hint">Keine. Unter „Mehr“ bei einer Versicherung „privat“ wählen.</p>'}
+      </div>
+      <p class="hint small">Ändern unter „Mehr“ → Versicherungen.</p>
       </div>
     </div>
     <div class="card">
@@ -468,11 +478,12 @@ function renderMore() {
 
     <div class="card">
       <h2>Versicherungen</h2>
-      <p class="hint small">Beitrag so eintragen, wie er abgebucht wird.</p>
+      <p class="hint small">Beitrag so eintragen, wie er abgebucht wird. „Praxis“ wird vor der Entnahme vom Brutto zurückgelegt, „Privat“ (z. B. PKV) zahlst du danach vom Netto.</p>
       ${Calc.live(data.insurances).map(i => `<div class="edrow">
         <input data-iname="${i.id}" value="${esc(i.name)}">
         <input class="num" inputmode="decimal" data-iamt="${i.id}" value="${numStr(i.amount)}" placeholder="0">
         <select data-iint="${i.id}">${Object.entries(Calc.INTERVAL_NAME).map(([k, l]) => `<option value="${k}" ${i.interval === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select data-ipx="${i.id}"><option value="1" ${Calc.isPraxis(i) ? 'selected' : ''}>Praxis: vom Brutto</option><option value="0" ${Calc.isPraxis(i) ? '' : 'selected'}>Privat: vom Netto</option></select>
         <button data-idel="${i.id}" aria-label="löschen">✕</button></div>`).join('')}
       <button class="text" id="insAdd">＋ Versicherung hinzufügen</button>
     </div>
@@ -514,8 +525,9 @@ function renderMore() {
   el.querySelectorAll('[data-iname]').forEach(i => i.onchange = () => touch(i.dataset.iname, { name: i.value }));
   el.querySelectorAll('[data-iamt]').forEach(i => i.onchange = () => touch(i.dataset.iamt, { amount: parseNum(i.value) }));
   el.querySelectorAll('[data-iint]').forEach(i => i.onchange = () => touch(i.dataset.iint, { interval: i.value }));
+  el.querySelectorAll('[data-ipx]').forEach(i => i.onchange = () => touch(i.dataset.ipx, { praxis: i.value === '1' }));
   el.querySelectorAll('[data-idel]').forEach(b => b.onclick = () => { if (confirm('Versicherung entfernen?')) touch(b.dataset.idel, { deleted: true }); });
-  $('#insAdd').onclick = () => { data.insurances.push({ id: uid(), name: 'Neue Versicherung', amount: 0, interval: 'm', updatedAt: Date.now() }); persist(); };
+  $('#insAdd').onclick = () => { data.insurances.push({ id: uid(), name: 'Neue Versicherung', amount: 0, interval: 'm', praxis: false, updatedAt: Date.now() }); persist(); };
   $('#xls').onclick = () => exportExcel(S.year);
   $('#syncGo')?.addEventListener('click', () => syncNow(true));
   $('#syncOff')?.addEventListener('click', async () => {
@@ -595,9 +607,11 @@ async function exportExcel(year) {
     ['Ärzteversorgung', ytd.vw, all.vw],
     ['Kredit (Raten)', ytd.loan, all.loan],
     ['Krankenkasse bezahlt', ytd.kv, all.kv],
+    ['Praxis-Versicherungen (vom Brutto)', ytd.insPraxis, all.insPraxis],
     ['Versicherungen gesamt (inkl. Krankenkasse)', ytd.ins, all.ins],
     ['Rücklagen-Check: noch sicher entnehmbar', chk.available, null],
     ['Kredit Restschuld geschätzt', Calc.loanRest(data, T), null],
+    ['PKV und private Versicherungen pro Monat (vom Netto)', Calc.privateIns(data), null],
     ['Haushalt pro Monat (vom Netto)', Calc.household(data), null],
   ].forEach(row => b.addRow(row));
   b.addRow([]);
@@ -608,7 +622,7 @@ async function exportExcel(year) {
     ['Kreditraten pro Jahr', +s.loanYear || 0], ['Erwartetes Brutto im Jahr', +s.expectedBrutto || 0],
   ].forEach(([l, v], i) => { const row = b.addRow([l, v]); if (i < 2) row.getCell(2).numFmt = '0.0%'; });
   setMoney(b, [2, 3]);
-  b.eachRow((row, n) => { if (n >= 17 && n <= 18) row.getCell(2).numFmt = '0.0%'; });
+  b.eachRow((row, n) => { if (n >= 19 && n <= 20) row.getCell(2).numFmt = '0.0%'; });
 
   // 2. Monate kumuliert
   const m = wb.addWorksheet('Monate');
@@ -635,11 +649,11 @@ async function exportExcel(year) {
   // 4. Versicherungen
   const it = Calc.insuranceTable(data, year, T);
   const v = wb.addWorksheet('Versicherungen');
-  v.columns = ['Versicherung', 'Zahlweise', 'pro Monat', 'pro Quartal', `pro Jahr (${it.months} Mon.)`, 'bezahlt bis heute'].map((h, i) => ({ header: h, width: i ? 16 : 32 }));
+  v.columns = ['Versicherung', 'Zahlweise', 'Art', 'pro Monat', 'pro Quartal', `pro Jahr (${it.months} Mon.)`, 'bezahlt bis heute'].map((h, i) => ({ header: h, width: i ? 16 : 32 }));
   head(v);
-  it.rows.forEach(x => v.addRow([x.name, x.interval, x.month, x.quarter, x.year, x.toDate]));
-  v.addRow(['Summe', '', it.sum.month, it.sum.quarter, it.sum.year, it.sum.toDate]).font = { bold: true };
-  setMoney(v, [3, 4, 5, 6]);
+  it.rows.forEach(x => v.addRow([x.name, x.interval, x.praxis ? 'Praxis (vom Brutto)' : 'privat (vom Netto)', x.month, x.quarter, x.year, x.toDate]));
+  v.addRow(['Summe', '', '', it.sum.month, it.sum.quarter, it.sum.year, it.sum.toDate]).font = { bold: true };
+  setMoney(v, [4, 5, 6, 7]);
 
   // 5. Termine
   const t = wb.addWorksheet('Termine');

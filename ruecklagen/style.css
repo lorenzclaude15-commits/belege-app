@@ -243,7 +243,7 @@ dialog.viewer .close { position: fixed; top: calc(12px + env(safe-area-inset-top
 .check { width: 26px; height: 26px; accent-color: var(--primary); }
 .item.entry { grid-template-columns: 1fr auto; }
 .item .warn { color: var(--danger); font-weight: 700; }
-.edrow { display: grid; grid-template-columns: 1fr 110px 92px 36px; gap: 6px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.edrow { display: grid; grid-template-columns: 1fr 1fr 36px; gap: 6px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
 .edrow:first-of-type { border-top: 0; }
 .edrow.hh { grid-template-columns: 1fr 110px 36px; }
 .edrow input, .edrow select { width: 100%; min-width: 0; padding: 9px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface2); }
@@ -264,3 +264,8 @@ dialog.viewer .close { position: fixed; top: calc(12px + env(safe-area-inset-top
 details summary { list-style: none; cursor: pointer; }
 details summary::-webkit-details-marker { display: none; }
 .topbar { max-width: 672px; margin: 0 auto; }
+
+.edrow:not(.hh) > input:first-child { grid-column: 1 / 3; }
+.edrow:not(.hh) > [data-idel] { grid-row: 1; grid-column: 3; }
+.edrow [data-ipx] { grid-column: 1 / 4; }
+.edrow:not(.hh) { padding: 10px 0; }
