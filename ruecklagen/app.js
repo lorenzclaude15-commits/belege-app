@@ -112,6 +112,7 @@ function showLock(mode) {
       }
     }
     el.hidden = true; el.innerHTML = '';
+    if (await importFromLink(setup)) S.view = 'home';
     show(S.view);
     syncNow(false);
   };
@@ -569,9 +570,33 @@ async function restore(file) {
   } catch (e) { toast('Datei lässt sich nicht lesen (falsche PIN?)'); return; }
   if (!obj || !obj.settings) { toast('Das ist keine Rücklagen-Datei'); return; }
   if (!confirm('Daten aus der Datei übernehmen? Die aktuellen Daten auf diesem Gerät werden ersetzt.')) return;
+  await applyData(obj);
+}
+
+async function applyData(obj) {
   Store.data = { ...defaults(), ...obj, prepay: obj.prepay || {}, local: D().local };
   await persist();
   toast('Daten übernommen');
+}
+
+// Startwerte-Link: …/ruecklagen/#start=<komprimierte Daten>. Der Teil nach # wird nie an einen Server geschickt.
+const LINK_DATA = location.hash.startsWith('#start=') ? location.hash.slice(7) : null;
+async function decodeLink(code) {
+  const b64 = code.replace(/-/g, '+').replace(/_/g, '/');
+  const bytes = Uint8Array.from(atob(b64 + '==='.slice((b64.length + 3) % 4)), c => c.charCodeAt(0));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return JSON.parse(await new Response(stream).text());
+}
+async function importFromLink(fresh) {
+  if (!LINK_DATA || importFromLink.done) return false;
+  importFromLink.done = true;
+  history.replaceState(null, '', location.pathname + location.search);
+  let obj;
+  try { obj = await decodeLink(LINK_DATA); } catch (e) { toast('Startwerte-Link ist beschädigt'); return false; }
+  if (!obj?.settings) return false;
+  if (!fresh && !confirm('Startwerte aus dem Link übernehmen? Die aktuellen Daten auf diesem Gerät werden ersetzt.')) return false;
+  await applyData(obj);
+  return true;
 }
 
 // ---------- Excel ----------
