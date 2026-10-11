@@ -338,6 +338,8 @@ function renderYear() {
       </div>
     </div>
 
+    ${s.taxAuto ? taxCard(data, year) : ''}
+
     <div class="card">
       <h2>Prognose ${year}</h2>
       <div class="breakdown">
@@ -390,6 +392,31 @@ function renderYear() {
 }
 
 const isFee = i => i.kind === 'ins' && /kammer|verband/i.test(i.name);
+function taxCard(data, year) {
+  const e = Calc.taxEstimate(data, year), b = +data.settings.expectedBrutto || 0;
+  const ln = (l, v, m) => `<div class="ln"><span class="${m ? 'm' : ''}">${l}</span><span class="${m ? 'm' : ''}">${eur(v)}</span></div>`;
+  return `<div class="card">
+    <h2>Steuerschätzung ${year}</h2>
+    <div class="breakdown">
+      ${ln('Erwartetes Brutto', b)}
+      ${ln('− Abschreibung Praxiskauf', e.ba.afa, 1)}
+      ${ln('− Kreditzinsen', e.ba.interest, 1)}
+      ${ln('− Praxisversicherungen, Kammer', e.ba.ins, 1)}
+      ${ln('− Fahrten (0,38 €/km)', e.ba.commute, 1)}
+      ${e.ba.other ? ln('− Sonstige Praxiskosten', e.ba.other, 1) : ''}
+      ${ln('= Gewinn', e.profit)}
+      ${ln('− Ärzteversorgung (Altersvorsorge)', e.vw, 1)}
+      ${ln(`− Kranken/Pflege Basis${e.vorsorge > e.basis + 1 ? ' + sonstige Vorsorge' : ''}`, e.vorsorge, 1)}
+      ${ln('= zu versteuerndes Einkommen', e.zve)}
+      ${ln(e.useKfb ? 'Einkommensteuer (mit Kinderfreibetrag + Kindergeld)' : 'Einkommensteuer', e.income, 1)}
+      ${ln('Solidaritätszuschlag', e.soli, 1)}
+      ${e.kist ? ln('Kirchensteuer', e.kist, 1) : ''}
+      <div class="ln sum"><span>Steuer gesamt</span><span>${eur(e.total)}</span></div>
+    </div>
+    <p class="hint small">${e.months} Monate ab Start. BU, Lebens-, Unfall- und Haftpflichtversicherung wirken neben der PKV steuerlich meist nicht mehr, weil der Basisanteil der PKV den Höchstbetrag schon ausschöpft.</p>
+  </div>`;
+}
+
 function taxRow(i) {
   const [y, m, d] = i.date.split('-');
   const late = !i.paid && i.date < todayIso();
@@ -454,6 +481,15 @@ function renderHouse() {
 }
 
 // ---------- Mehr ----------
+const TAX_FIELDS = [
+  ['children', 'Kinder (Kinderfreibetrag / Kindergeld)'],
+  ['commuteKm', 'Fahrt Wohnung – Praxis, einfache Strecke in km'],
+  ['workDays', 'Arbeitstage pro Jahr'],
+  ['afaYear', 'Abschreibung Praxiskauf pro Jahr'],
+  ['interestYear', 'Kreditzinsen pro Jahr (nur Zinsanteil)'],
+  ['otherCosts', 'Sonstige Praxiskosten pro Jahr (falls im Brutto noch enthalten)'],
+  ['pkvBasisPct', 'Basisanteil der PKV in % (steht in der PKV-Bescheinigung)'],
+];
 const FIELDS = [
   ['start', 'Start Praxis / Rechnungszeitraum ab', 'date'],
   ['expectedBrutto', 'Erwartetes Brutto im Jahr (ab Start)'],
@@ -467,6 +503,8 @@ const FIELDS = [
   ['loanDay', 'Kreditrate fällig am Tag', 'day'],
 ];
 
+const TAX_KIND = { be: 'Betriebsausgabe', basis: 'Basis-Kranken/Pflege', vorsorge: 'sonstige Vorsorge (gedeckelt)', none: 'keine Wirkung' };
+
 function renderMore() {
   const el = $('#view-more'), data = D(), s = data.settings;
   const r = Calc.rule(data, new Date().getFullYear());
@@ -478,6 +516,16 @@ function renderMore() {
       <p class="hint small">Steueranteil am Brutto: ${pct(r.tax)} (Steuer geteilt durch erwartetes Brutto). Entnahme-Regel: ${pct(r.net)} vom Brutto.</p>
     </div>
 
+    <div class="card setgrid">
+      <h2>Steuer genau schätzen</h2>
+      <label class="row" style="padding:6px 0"><input type="checkbox" class="check" data-flag="taxAuto" ${s.taxAuto ? 'checked' : ''}> <span>Steuer automatisch berechnen (Tarif 2026)</span></label>
+      ${s.taxAuto ? `
+      <label class="row" style="padding:6px 0"><input type="checkbox" class="check" data-flag="married" ${s.married ? 'checked' : ''}> <span>verheiratet, Zusammenveranlagung</span></label>
+      <label class="row" style="padding:6px 0"><input type="checkbox" class="check" data-flag="church" ${s.church ? 'checked' : ''}> <span>Kirchensteuer (8 %)</span></label>
+      ${TAX_FIELDS.map(([k, l]) => `<label class="field"><span>${l}</span><input data-set="${k}" inputmode="decimal" value="${numStr(s[k])}" placeholder="0"></label>`).join('')}
+      <p class="hint small">Die Felder „zu versteuerndes Einkommen“ und „Steuer + Soli“ oben werden dann ignoriert. Die Rechnung siehst du unter Bilanz.</p>` : ''}
+    </div>
+
     <div class="card">
       <h2>Versicherungen &amp; Beiträge</h2>
       <p class="hint small">Auch Kammerbeiträge gehören hierher. Bei jährlichen Posten kannst du den Fälligkeitstag eintragen (TT.MM). Beitrag so eintragen, wie er abgebucht wird. „Praxis“ wird vor der Entnahme vom Brutto zurückgelegt, „Privat“ (z. B. PKV) zahlst du danach vom Netto.</p>
@@ -486,6 +534,7 @@ function renderMore() {
         <input class="num" inputmode="decimal" data-iamt="${i.id}" value="${numStr(i.amount)}" placeholder="0">
         <select data-iint="${i.id}">${Object.entries(Calc.INTERVAL_NAME).map(([k, l]) => `<option value="${k}" ${i.interval === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <select data-ipx="${i.id}"><option value="1" ${Calc.isPraxis(i) ? 'selected' : ''}>Praxis: vom Brutto</option><option value="0" ${Calc.isPraxis(i) ? '' : 'selected'}>Privat: vom Netto</option></select>
+        <select data-itax="${i.id}">${Object.entries(TAX_KIND).map(([k, l]) => `<option value="${k}" ${Calc.taxKind(i) === k ? 'selected' : ''}>Steuer: ${l}</option>`).join('')}</select>
         ${i.interval === 'y' ? `<input data-idue="${i.id}" placeholder="fällig am TT.MM (optional)" value="${i.due ? i.due.split('-').reverse().join('.') : ''}">` : ''}
         <button data-idel="${i.id}" aria-label="löschen">✕</button></div>`).join('')}
       <button class="text" id="insAdd">＋ Versicherung hinzufügen</button>
@@ -517,6 +566,7 @@ function renderMore() {
       <button class="text danger" id="wipe">Alle Daten auf diesem Gerät löschen</button>
     </div>`;
 
+  el.querySelectorAll('[data-flag]').forEach(i => i.onchange = () => { s[i.dataset.flag] = i.checked; s.updatedAt = Date.now(); persist(); });
   el.querySelectorAll('[data-set]').forEach(i => i.onchange = () => {
     const k = i.dataset.set;
     s[k] = i.type === 'date' ? i.value : parseNum(i.value);
@@ -528,6 +578,7 @@ function renderMore() {
   el.querySelectorAll('[data-iname]').forEach(i => i.onchange = () => touch(i.dataset.iname, { name: i.value }));
   el.querySelectorAll('[data-iamt]').forEach(i => i.onchange = () => touch(i.dataset.iamt, { amount: parseNum(i.value) }));
   el.querySelectorAll('[data-iint]').forEach(i => i.onchange = () => touch(i.dataset.iint, { interval: i.value }));
+  el.querySelectorAll('[data-itax]').forEach(i => i.onchange = () => touch(i.dataset.itax, { tax: i.value }));
   el.querySelectorAll('[data-idue]').forEach(i => i.onchange = () => {
     const m = i.value.trim().match(/^(\d{1,2})\.(\d{1,2})\.?$/);
     touch(i.dataset.idue, { due: m ? `${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '' });
@@ -695,6 +746,20 @@ async function exportExcel(year) {
     row.getCell(1).numFmt = 'dd.mm.yyyy';
   });
   setMoney(t, [3]);
+
+  // Steuerschätzung
+  if (s.taxAuto) {
+    const x = Calc.taxEstimate(data, year);
+    const st = wb.addWorksheet('Steuerschätzung');
+    st.columns = [{ header: `Steuerschätzung ${year} (${x.months} Monate)`, width: 52 }, { header: '€', width: 16 }];
+    head(st);
+    [['Erwartetes Brutto', +s.expectedBrutto || 0], ['− Abschreibung Praxiskauf', x.ba.afa], ['− Kreditzinsen', x.ba.interest],
+      ['− Praxisversicherungen, Kammer (Betriebsausgaben)', x.ba.ins], ['− Fahrten Wohnung–Praxis', x.ba.commute], ['− Sonstige Praxiskosten', x.ba.other],
+      ['= Gewinn', x.profit], ['− Ärzteversorgung (Altersvorsorge)', x.vw], ['− Kranken/Pflege Basis + sonstige Vorsorge', x.vorsorge],
+      ['= zu versteuerndes Einkommen', x.zve], ['Einkommensteuer', x.income], ['Solidaritätszuschlag', x.soli], ['Kirchensteuer', x.kist], ['Steuer gesamt', x.total],
+    ].forEach(r => st.addRow(r));
+    setMoney(st, [2]);
+  }
 
   // 6. Haushalt
   const h = wb.addWorksheet('Haushalt');

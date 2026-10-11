@@ -13,9 +13,55 @@
   const num = v => (Number.isFinite(+v) ? +v : 0);
 
   // Steueranteil am Brutto: erwartete Steuer geteilt durchs erwartete Brutto (nicht durchs zu versteuernde Einkommen)
-  function taxRate(s) {
+  // Steueranteil am Brutto: erwartete Steuer geteilt durchs erwartete Brutto
+  function taxRate(data, year) {
+    const s = data.settings;
     const base = num(s.expectedBrutto) || num(s.taxableIncome);
-    return base > 0 ? num(s.taxAmount) / base : 0;
+    const tax = s.taxAuto ? taxEstimate(data, year || new Date().getFullYear()).total : num(s.taxAmount);
+    return base > 0 ? tax / base : 0;
+  }
+
+  // ---- Steuerschätzung (Tarif 2026, § 32a EStG) ----
+  const T = {
+    pendler: 0.38, kfb: 9756, kindergeld: 259 * 12, altCap: 30826, sonstCap: 2800, soliFg: 20350, saPausch: 36, kist: 0.08,
+  };
+  function tarif(x) {
+    x = Math.floor(Math.max(0, x));
+    if (x <= 12348) return 0;
+    if (x <= 17799) { const y = (x - 12348) / 1e4; return Math.floor((914.51 * y + 1400) * y); }
+    if (x <= 69878) { const z = (x - 17799) / 1e4; return Math.floor((173.10 * z + 2397) * z + 1034.87); }
+    if (x <= 277825) return Math.floor(0.42 * x - 11135.63);
+    return Math.floor(0.45 * x - 19470.38);
+  }
+  // Steuerliche Art eines Postens: Betriebsausgabe, Basis-Kranken/Pflege, sonstige Vorsorge oder ohne Wirkung
+  function taxKind(i) {
+    if (i.tax) return i.tax;
+    const n = i.name || '';
+    if (/praxis|rechtss?chutz|kammer|verband|berufshaft/i.test(n)) return 'be';
+    if (/kranken|pkv|pflege/i.test(n)) return 'basis';
+    return 'vorsorge';
+  }
+  function taxEstimate(data, year) {
+    const s = data.settings, w = span(data, year), months = w ? w.months : 12, f = months / 12;
+    const married = !!s.married, k = married ? 2 : 1, kids = num(s.children);
+    const sumIns = kind => live(data.insurances).filter(i => taxKind(i) === kind).reduce((a, i) => a + insMonthly(i) * months, 0);
+    const ba = {
+      afa: num(s.afaYear) * f, interest: num(s.interestYear) * f, ins: sumIns('be'),
+      commute: num(s.commuteKm) * T.pendler * (num(s.workDays) || 220) * f, other: num(s.otherCosts) * f,
+    };
+    const profit = num(s.expectedBrutto) - ba.afa - ba.interest - ba.ins - ba.commute - ba.other;
+    const vw = Math.min(num(s.vwYear) * f, T.altCap * k);
+    const basis = sumIns('basis') * ((s.pkvBasisPct ?? 80) / 100), other = sumIns('vorsorge');
+    const vorsorge = Math.max(basis, Math.min(basis + other, T.sonstCap * k));
+    const zve = Math.max(0, profit - vw - vorsorge - T.saPausch * k);
+    const est = x => (married ? 2 * tarif(x / 2) : tarif(x));
+    const kfb = kids * T.kfb, kg = kids * T.kindergeld;
+    const without = est(zve), withKfb = est(zve - kfb);
+    const useKfb = without - withKfb > kg;
+    const income = useKfb ? withKfb + kg : without; // bei Freibetrag wird das Kindergeld hinzugerechnet
+    const soli = Math.max(0, Math.min(0.055 * withKfb, 0.119 * (withKfb - T.soliFg * k)));
+    const kist = s.church ? T.kist * withKfb : 0;
+    return { months, ba, profit, vw, basis, other, vorsorge, zve, kfb, useKfb, kg, income, soli, kist, total: income + soli + kist };
   }
   function insMonthly(i) { return num(i.amount) * (FACTOR[i.interval] ?? 1); }
   // Praxis-Versicherungen gehen vom Brutto ab, private (z. B. PKV) erst vom Netto
@@ -38,7 +84,7 @@
 
   // Regel pro Eingang: welcher Anteil vom Brutto geht in welche Rücklage, bezogen aufs erwartete Brutto des Jahres
   function rule(data, year) {
-    const s = data.settings, w = span(data, year), q = taxRate(s);
+    const s = data.settings, w = span(data, year), q = taxRate(data, year);
     const fm = fixedMonthly(data), months = w ? w.months : 12;
     const exp = num(s.expectedBrutto);
     const share = v => (exp > 0 ? (v * months) / exp : 0);
@@ -72,7 +118,7 @@
     const ents = entriesOf(data, year).filter(e => e.date <= iso(asOf));
     const brutto = ents.reduce((a, e) => a + num(e.brutto), 0);
     const netto = ents.reduce((a, e) => a + num(e.netto), 0);
-    const q = taxRate(data.settings), fm = fixedMonthly(data);
+    const q = taxRate(data, year), fm = fixedMonthly(data);
     let monthsEq = 0;
     if (w && asOf >= w.from) {
       const end = asOf < w.to ? asOf : w.to;
@@ -115,7 +161,7 @@
 
   // Summen in einem Zeitraum [from, to] (ISO-Strings)
   function totals(data, year, from, to) {
-    const q = taxRate(data.settings);
+    const q = taxRate(data, year);
     const ents = entriesOf(data, year).filter(e => e.date >= from && e.date <= to);
     const t = { brutto: 0, netto: 0, taxReserve: 0, taxPaid: 0, taxDue: 0, vw: 0, loan: 0, ins: 0, insPraxis: 0, kv: 0, byIns: {} };
     for (const e of ents) { t.brutto += num(e.brutto); t.netto += num(e.netto); }
@@ -183,6 +229,6 @@
   }
   function privateIns(data) { return insMonthlyTotal(data, false); }
 
-  const api = { iso, parse, taxRate, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
+  const api = { iso, parse, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
   if (typeof module !== 'undefined') module.exports = api; else root.Calc = api;
 })(this);
