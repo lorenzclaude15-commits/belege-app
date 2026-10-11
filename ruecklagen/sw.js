@@ -1,5 +1,5 @@
 // Offline-Betrieb: App-Dateien liegen im Cache, Daten nur verschlüsselt im Browser-Speicher
-const VERSION = 'ruecklagen-v2';
+const VERSION = 'ruecklagen-v3';
 const FILES = [
   './', 'index.html', 'style.css', 'calc.js', 'store.js', 'sync.js', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'vendor/exceljs.min.js',

@@ -473,7 +473,7 @@ function renderMore() {
       <h2>Werte</h2>
       ${FIELDS.map(([k, l, type]) => `<label class="field"><span>${l}</span>
         <input data-set="${k}" ${type === 'date' ? `type="date" value="${s[k] || ''}"` : `inputmode="${type === 'day' ? 'numeric' : 'decimal'}" value="${type === 'day' ? (s[k] || '') : numStr(s[k])}" placeholder="0"`}></label>`).join('')}
-      <p class="hint small">Steuersatz daraus: ${pct(r.tax)}. Entnahme-Regel: ${pct(r.net)} vom Brutto.</p>
+      <p class="hint small">Steueranteil am Brutto: ${pct(r.tax)} (Steuer geteilt durch erwartetes Brutto). Entnahme-Regel: ${pct(r.net)} vom Brutto.</p>
     </div>
 
     <div class="card">

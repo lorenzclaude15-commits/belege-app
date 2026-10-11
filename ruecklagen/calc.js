@@ -12,8 +12,10 @@
   const live = list => (list || []).filter(x => !x.deleted);
   const num = v => (Number.isFinite(+v) ? +v : 0);
 
+  // Steueranteil am Brutto: erwartete Steuer geteilt durchs erwartete Brutto (nicht durchs zu versteuernde Einkommen)
   function taxRate(s) {
-    return num(s.taxableIncome) > 0 ? num(s.taxAmount) / num(s.taxableIncome) : 0;
+    const base = num(s.expectedBrutto) || num(s.taxableIncome);
+    return base > 0 ? num(s.taxAmount) / base : 0;
   }
   function insMonthly(i) { return num(i.amount) * (FACTOR[i.interval] ?? 1); }
   // Praxis-Versicherungen gehen vom Brutto ab, private (z. B. PKV) erst vom Netto
