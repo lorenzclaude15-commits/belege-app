@@ -657,6 +657,7 @@ function renderMore() {
   const yrs = []; for (let y = sy; y <= Math.max(new Date().getFullYear() + 3, sy + 3); y++) yrs.push(y);
   const vwNow = Calc.vwFor(data, S.setYear);
   el.innerHTML = `
+    ${D().local?.sync?.token ? '' : `<button class="banner" onclick="document.getElementById('syncCard').scrollIntoView({ behavior: 'smooth' })"><span style="font-size:26px">🔄</span><span><b>Handy und PC synchronisieren</b><br><span class="small">Hier tippen, um den Abgleich einzurichten</span></span></button>`}
     <div class="chips" style="margin-bottom:10px">${yrs.map(y => `<button class="chip ${y === S.setYear ? 'on' : ''}" data-setyear="${y}">Werte ${y}</button>`).join('')}</div>
     <p class="hint small" style="margin-top:0">Jedes Jahr übernimmt die Werte des Vorjahres. Was du hier für ${S.setYear} änderst, gilt ab ${S.setYear}; frühere Jahre bleiben, wie sie sind.</p>
     <div class="card setgrid">
@@ -700,7 +701,7 @@ function renderMore() {
       <p class="hint small">Die Sicherung ist mit deiner PIN verschlüsselt. Leg sie z. B. in Google Drive ab, falls das Handy verloren geht.</p>
     </div>
 
-    <div class="card">
+    <div class="card" id="syncCard">
       <h2>Mit PC synchronisieren</h2>
       ${D().local?.sync?.token ? `<p class="hint small">Eingerichtet. ${D().local.sync.last ? 'Zuletzt abgeglichen ' + new Date(D().local.sync.last).toLocaleString('de-DE') : 'Noch nicht abgeglichen'}.</p>
         <button class="big" id="syncGo">🔄 Jetzt abgleichen</button>

@@ -1,5 +1,5 @@
 // Offline-Betrieb: App-Dateien liegen im Cache, Daten nur verschlüsselt im Browser-Speicher
-const VERSION = 'ruecklagen-v10';
+const VERSION = 'ruecklagen-v11';
 const FILES = [
   './', 'index.html', 'style.css', 'calc.js', 'store.js', 'sync.js', 'app.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png', 'vendor/exceljs.min.js',
@@ -18,13 +18,16 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  // Netz zuerst, damit Updates sofort ankommen; ohne Netz aus dem Cache
   e.respondWith((async () => {
     const cache = await caches.open(VERSION);
-    const hit = await cache.match(e.request, { ignoreSearch: true });
-    if (hit) return hit;
     try {
-      return await fetch(e.request);
+      const res = await fetch(e.request, { cache: 'no-cache' });
+      if (res.ok) cache.put(e.request, res.clone());
+      return res;
     } catch (err) {
+      const hit = await cache.match(e.request, { ignoreSearch: true });
+      if (hit) return hit;
       if (e.request.mode === 'navigate') return cache.match('index.html');
       throw err;
     }
