@@ -124,12 +124,12 @@ function showLock(mode) {
 function lockNow() {
   Store.lock();
   document.querySelectorAll('dialog[open]').forEach(d => d.close());
-  ['home', 'year', 'house', 'more'].forEach(v => { $('#view-' + v).innerHTML = ''; });
+  ['home', 'year', 'month', 'house', 'more'].forEach(v => { $('#view-' + v).innerHTML = ''; });
   showLock('unlock');
 }
 
 // ---------- Navigation ----------
-const TITLES = { home: 'Start', year: 'Bilanz', house: 'Haushalt', more: 'Mehr' };
+const TITLES = { home: 'Start', year: 'Bilanz', month: 'Monat', house: 'Haushalt', more: 'Mehr' };
 function show(view) {
   S.view = view;
   document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== 'view-' + view; });
@@ -140,7 +140,7 @@ function show(view) {
 }
 function refresh() {
   if (!Store.unlocked) return;
-  ({ home: renderHome, year: renderYear, house: renderHouse, more: renderMore })[S.view]();
+  ({ home: renderHome, year: renderYear, month: renderMonth, house: renderHouse, more: renderMore })[S.view]();
 }
 
 function years() {
@@ -437,6 +437,69 @@ async function setPrepay(date, patch) {
 }
 
 // ---------- Haushalt ----------
+// ---------- Monat: Brutto → Netto → im Geldbeutel ----------
+// Netto = Brutto − Steuer − Ärzteversorgung − alle Versicherungen (beruflich und privat inkl. PKV).
+// Im Geldbeutel = Netto − Kredit − Haushalt. Fixkosten sind als Monatsschnitt verteilt (Jahresbeiträge / 12).
+function monthFlow(data, year, brutto) {
+  const r = Calc.rule(data, year), fm = Calc.fixedMonthly(data, year);
+  const f = { brutto, tax: brutto * r.tax, vw: fm.vw, insPraxis: Calc.insMonthlyTotal(data, true), insPrivate: Calc.privateIns(data), loan: fm.loan, house: Calc.household(data) };
+  f.netto = f.brutto - f.tax - f.vw - f.insPraxis - f.insPrivate;
+  f.wallet = f.netto - f.loan - f.house;
+  return f;
+}
+function flowHtml(f) {
+  const ln = (l, v, m) => `<div class="ln"><span class="${m ? 'm' : ''}">${l}</span><span class="${m ? 'm' : ''}">${eur(v)}</span></div>`;
+  return `<div class="breakdown">
+    ${ln('Brutto', f.brutto)}
+    ${ln('− Steuer + Soli (Rücklage)', f.tax, 1)}
+    ${ln('− Ärzteversorgung', f.vw, 1)}
+    ${ln('− berufliche Versicherungen + Kammer', f.insPraxis, 1)}
+    ${ln('− PKV + private Versicherungen', f.insPrivate, 1)}
+    <div class="ln sum"><span>= Monatsnetto</span><span>${eur(f.netto)}</span></div>
+    ${ln('− Kredit', f.loan, 1)}
+    ${ln('− Haushalt', f.house, 1)}
+    <div class="ln sum"><span>= Im Geldbeutel</span><span style="color:var(${f.wallet >= 0 ? '--ok' : '--danger'})">${eur(f.wallet)}</span></div>
+  </div>`;
+}
+function renderMonth() {
+  const el = $('#view-month'), data = D(), year = S.year;
+  const w = Calc.span(data, year), s = Calc.cfg(data, year), t = today();
+  const lastM = year < t.getFullYear() ? 11 : year === t.getFullYear() ? t.getMonth() : -1;
+  const mon = Calc.monthly(data, year).filter(m => w && m.month >= w.from.getMonth() && m.month <= lastM);
+  const flows = mon.map(m => ({ m: m.month, taken: m.netto, ...monthFlow(data, year, m.brutto) }));
+  const n = flows.length;
+  // Laufender Monat zählt nur anteilig (nach Tagen), sonst drückt er den Schnitt
+  const eq = year === t.getFullYear() ? Calc.check(data, year, t).monthsEq : n;
+  const avg = n && eq > 0 ? monthFlow(data, year, flows.reduce((a, f) => a + f.brutto, 0) / eq) : null;
+  const running = year === t.getFullYear() ? t.getMonth() : -1;
+  const plan = monthFlow(data, year, (+s.expectedBrutto || 0) / (w ? w.months : 12));
+  const big = (l, v, cls) => `<div class="kpi"><div class="l">${l}</div><div class="v" ${cls ? `style="color:var(${cls})"` : ''}>${eur(v)}</div></div>`;
+  const top = avg || plan;
+  el.innerHTML = `
+    <div class="chips" style="margin-bottom:10px">${years().map(y => `<button class="chip ${y === year ? 'on' : ''}" data-year="${y}">${y}</button>`).join('')}</div>
+    <div class="card">
+      <h2>${avg ? `Ø pro Monat ${year} (seit ${MONTHS[w.from.getMonth()]}, ${eq.toLocaleString('de-DE', { maximumFractionDigits: 1 })} Monate)` : `Plan pro Monat ${year}`}</h2>
+      <div class="kpis k3">
+        ${big('Monatsbrutto', top.brutto)}
+        ${big('Monatsnetto', top.netto)}
+        ${big('Im Geldbeutel', top.wallet, top.wallet >= 0 ? '--ok' : '--danger')}
+      </div>
+      ${flowHtml(top)}
+    </div>
+    ${avg ? `<div class="card"><h2>Plan pro Monat ${year}</h2><p class="hint small">Bei erwartetem Brutto von ${eur(+s.expectedBrutto || 0)} im Jahr.</p>${flowHtml(plan)}</div>` : ''}
+    ${n ? `<div class="card">
+      <h2>Monate einzeln</h2>
+      <div class="scroll-x"><table class="tbl">
+        <tr><th>Monat</th><th>Brutto</th><th>Netto</th><th>Geldbeutel</th></tr>
+        ${flows.slice().reverse().map(f => `<tr data-mon="${f.m}" style="cursor:pointer"><td>${MONTHS[f.m]}${f.m === running ? '<div class="small muted">läuft noch</div>' : ''}</td><td>${eur(f.brutto)}</td><td>${eur(f.netto)}</td><td style="color:var(${f.wallet >= 0 ? '--ok' : '--danger'})">${eur(f.wallet)}</td></tr>
+          <tr data-det="${f.m}" hidden><td colspan="4" style="white-space:normal">${flowHtml(f)}<p class="hint small">Tatsächlich aufs Privatkonto entnommen: ${eur(f.taken)}</p></td></tr>`).join('')}
+      </table></div>
+      <p class="hint small">Monat antippen für die Aufschlüsselung. Jahresbeiträge (z. B. Kammer, Praxisausfall) sind auf 12 Monate verteilt, damit einzelne Abbuchungen den Monat nicht verzerren.</p>
+    </div>` : ''}`;
+  el.querySelectorAll('[data-year]').forEach(b => b.onclick = () => { S.year = +b.dataset.year; renderMonth(); });
+  el.querySelectorAll('[data-mon]').forEach(r => r.onclick = () => { const d = el.querySelector(`[data-det="${r.dataset.mon}"]`); d.hidden = !d.hidden; });
+}
+
 function renderHouse() {
   const el = $('#view-house'), data = D(), year = new Date().getFullYear();
   const chk = Calc.check(data, year, today());

@@ -105,7 +105,7 @@ button.small-btn { border: 1px solid var(--line); background: var(--surface); bo
 /* Navigation */
 .bottomnav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-  display: grid; grid-template-columns: 1fr 1fr 84px 1fr 1fr; align-items: end;
+  display: grid; grid-template-columns: 1fr 1fr 1fr 72px 1fr 1fr; align-items: end;
   background: var(--surface); border-top: 1px solid var(--line);
   padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
 }
@@ -200,7 +200,7 @@ dialog.viewer .close { position: fixed; top: calc(12px + env(safe-area-inset-top
 /* ---- Rücklagen-App ---- */
 :root { --ok: #067647; --ok-soft: #dcfae6; --danger-soft: #fee4e2; }
 @media (prefers-color-scheme: dark) { :root { --ok: #47cd89; --ok-soft: #0f2e1f; --danger-soft: #3b1a17; } }
-.bottomnav { grid-template-columns: 1fr 1fr 84px 1fr 1fr; }
+.bottomnav { grid-template-columns: 1fr 1fr 1fr 72px 1fr 1fr; }
 .bottomnav .fab { color: var(--primary-ink); }
 .hero { text-align: center; padding: 20px 16px; }
 .hero .lbl { font-size: 14px; color: var(--muted); }
@@ -270,3 +270,6 @@ details summary::-webkit-details-marker { display: none; }
 .edrow [data-ipx] { grid-column: 1 / 4; }
 .edrow:not(.hh) { padding: 10px 0; }
 .edrow [data-idue] { grid-column: 1 / 4; }
+.kpis.k3 { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.kpis.k3 .v { font-size: 17px; }
+.kpis.k3 .kpi { padding: 10px 8px; }

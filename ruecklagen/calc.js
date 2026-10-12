@@ -271,6 +271,6 @@
   }
   function privateIns(data) { return insMonthlyTotal(data, false); }
 
-  const api = { iso, parse, cfg, vwFor, startYear, GLOBAL, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
+  const api = { fixedMonthly, insMonthlyTotal, iso, parse, cfg, vwFor, startYear, GLOBAL, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
   if (typeof module !== 'undefined') module.exports = api; else root.Calc = api;
 })(this);
