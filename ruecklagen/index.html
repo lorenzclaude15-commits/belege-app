@@ -14,12 +14,14 @@
 <body>
 <header class="topbar">
   <h1 id="title">Start</h1>
-  <button id="lockBtn" class="small-btn" aria-label="Sperren">🔒</button>
+  <span style="display:flex;gap:8px"><button id="moreBtn" class="small-btn" aria-label="Einstellungen">⚙️</button>
+  <button id="lockBtn" class="small-btn" aria-label="Sperren">🔒</button></span>
 </header>
 
 <main>
   <section id="view-home" class="view"></section>
   <section id="view-year" class="view" hidden></section>
+  <section id="view-reserve" class="view" hidden></section>
   <section id="view-month" class="view" hidden></section>
   <section id="view-house" class="view" hidden></section>
   <section id="view-more" class="view" hidden></section>
@@ -28,10 +30,10 @@
 <nav class="bottomnav">
   <button data-view="home" class="active"><span class="ico">🏠</span><span>Start</span></button>
   <button data-view="year"><span class="ico">📊</span><span>Bilanz</span></button>
-  <button data-view="month"><span class="ico">👛</span><span>Monat</span></button>
+  <button data-view="reserve"><span class="ico">🏛️</span><span>Rücklage</span></button>
   <button id="addBtn" class="fab" aria-label="Eingang erfassen"><span>＋</span></button>
+  <button data-view="month"><span class="ico">👛</span><span>Monat</span></button>
   <button data-view="house"><span class="ico">🛒</span><span>Haushalt</span></button>
-  <button data-view="more"><span class="ico">⚙️</span><span>Mehr</span></button>
 </nav>
 
 <dialog id="entryDlg" class="sheet tall"><div id="entryBody"></div></dialog>

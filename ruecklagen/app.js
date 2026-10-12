@@ -124,12 +124,12 @@ function showLock(mode) {
 function lockNow() {
   Store.lock();
   document.querySelectorAll('dialog[open]').forEach(d => d.close());
-  ['home', 'year', 'month', 'house', 'more'].forEach(v => { $('#view-' + v).innerHTML = ''; });
+  ['home', 'year', 'reserve', 'month', 'house', 'more'].forEach(v => { $('#view-' + v).innerHTML = ''; });
   showLock('unlock');
 }
 
 // ---------- Navigation ----------
-const TITLES = { home: 'Start', year: 'Bilanz', month: 'Monat', house: 'Haushalt', more: 'Mehr' };
+const TITLES = { home: 'Start', year: 'Bilanz', reserve: 'Rücklage Steuer & Co', month: 'Monat', house: 'Haushalt', more: 'Mehr' };
 function show(view) {
   S.view = view;
   document.querySelectorAll('.view').forEach(v => { v.hidden = v.id !== 'view-' + view; });
@@ -140,7 +140,7 @@ function show(view) {
 }
 function refresh() {
   if (!Store.unlocked) return;
-  ({ home: renderHome, year: renderYear, month: renderMonth, house: renderHouse, more: renderMore })[S.view]();
+  ({ home: renderHome, year: renderYear, reserve: renderReserve, month: renderMonth, house: renderHouse, more: renderMore })[S.view]();
 }
 
 function years() {
@@ -436,6 +436,72 @@ async function setPrepay(date, patch) {
   await persist();
 }
 
+// ---------- Rücklage Steuer & Co: was auf dem Geschäftskonto bleiben muss ----------
+async function setPaid(key, paid) {
+  const data = D();
+  data.prepay[key] = { ...(data.prepay[key] || {}), paid, updatedAt: Date.now() };
+  await persist();
+}
+function renderReserve() {
+  const el = $('#view-reserve'), data = D(), year = S.year, t = asOf(year);
+  const w = Calc.span(data, year);
+  const chips = `<div class="chips" style="margin-bottom:10px">${years().map(y => `<button class="chip ${y === year ? 'on' : ''}" data-year="${y}">${y}</button>`).join('')}</div>`;
+  const bind = () => el.querySelectorAll('[data-year]').forEach(b => b.onclick = () => { S.year = +b.dataset.year; renderReserve(); });
+  if (!w || year > today().getFullYear()) { el.innerHTML = chips + '<div class="empty"><p>Für dieses Jahr gibt es noch keine Eingänge.</p></div>'; bind(); return; }
+  const r = Calc.reserve(data, year, t);
+  const sched = Calc.schedule(data, year);
+  const relevant = i => i.kind === 'tax' || i.kind === 'vw' || (i.kind === 'ins' && r.lines.some(l => l.key === 'ins:' + i.insId));
+  const s = Calc.cfg(data, year), expTax = (+s.expectedBrutto || 0) * Calc.taxRate(data, year);
+  const prepayAll = sched.filter(i => i.kind === 'tax').reduce((a, i) => a + i.amount, 0);
+  const ln = l => `<div class="ln"><span class="${l.need > 0 ? '' : 'm'}">${esc(l.label)}<div class="small muted">aufgelaufen ${eur(l.acc)} − bezahlt ${eur(l.paid)}</div></span><span class="${l.need > 0 ? '' : 'm'}">${l.need > 0 ? eur(l.need) : l.key === 'tax' ? `${eur(l.need)}` : '0 €'}</span></div>`;
+  const quarters = [];
+  for (let q = 0; q < 4; q++) {
+    const qs = new Date(year, q * 3, 1), qe = new Date(year, q * 3 + 3, 0);
+    if (qe < w.from || qs > t) continue;
+    const end = qe < t ? qe : t;
+    const rq = Calc.reserve(data, year, end, qe >= t);
+    const items = sched.filter(i => relevant(i) && i.date >= Calc.iso(qs) && i.date <= Calc.iso(qe));
+    quarters.push({ q, end, rq, items, running: qe >= t });
+  }
+  const itemRow = i => {
+    const paid = Calc.isPaid(data, i, t), [, m, d] = i.date.split('-');
+    const ic = i.kind === 'tax' ? '🏛️' : i.kind === 'vw' ? '🩺' : Calc.isPraxis({ name: i.name }) && /kammer|verband/i.test(i.name) ? '🏥' : '🛡️';
+    return `<label class="due ${paid ? 'past' : ''}" style="cursor:pointer">
+      <div class="d"><b>${d}</b><span>${MONTHS[+m - 1]}</span></div>
+      <div><div class="t">${ic} ${esc(i.name)}</div><div class="s">${paid ? 'bezahlt' : i.date < Calc.iso(today()) ? 'offen, Termin vorbei' : 'offen'}</div></div>
+      <div class="a" style="display:flex;align-items:center;gap:8px">${eur(i.amount)}<input type="checkbox" class="check" data-pkey="${i.key}" data-pdate="${i.kind === 'tax' ? i.date : ''}" ${paid ? 'checked' : ''}></div></label>`;
+  };
+  el.innerHTML = chips + `
+    <div class="card hero">
+      <div class="lbl">Muss am ${dmy(r.asOf)} auf dem Geschäftskonto bleiben</div>
+      <div class="total">${eur(r.total)}</div>
+      <div class="small muted">für Steuer, Ärzteversorgung, Kammer und jährliche Praxis-Versicherungen</div>
+    </div>
+    <div class="card">
+      <h2>Zusammensetzung</h2>
+      <div class="breakdown">${r.lines.filter(l => l.need > 0.5 || l.key === 'tax' || l.key === 'vw').map(ln).join('')}
+        <div class="ln sum"><span>Rücklage gesamt</span><span>${eur(r.total)}</span></div></div>
+      ${r.lines.find(l => l.key === 'tax').need < 0 ? '<p class="hint small">Die Steuer-Vorauszahlungen liegen über der bisher aufgelaufenen Steuer. Das gleicht sich mit den nächsten Eingängen aus.</p>' : ''}
+      <p class="hint small">Steuer läuft mit jedem Brutto-Eingang auf (${pct(Calc.taxRate(data, year))}), Ärzteversorgung und Jahresbeiträge zeitanteilig. Steuer gilt erst als bezahlt, wenn du sie abhakst. Lastschriften gelten ab ihrem Termin als bezahlt; Haken entfernen, wenn sie noch nicht abgebucht wurden.</p>
+    </div>
+    ${quarters.slice().reverse().map(({ q, end, rq, items, running }) => `<div class="card">
+      <h2>Q${q + 1} ${year}${running ? ' (läuft)' : ''}</h2>
+      <div class="breakdown"><div class="ln sum"><span>Rücklage am ${dmy(Calc.iso(end))}</span><span>${eur(rq.total)}</span></div></div>
+      ${items.length ? items.map(itemRow).join('') : '<p class="hint small">Keine Zahlungen in diesem Quartal.</p>'}
+    </div>`).join('')}
+    <div class="card">
+      <h2>Ausblick Jahresende ${year}</h2>
+      <div class="breakdown">
+        <div class="ln"><span>Steuer + Soli für ${year} erwartet</span><span>${eur(expTax)}</span></div>
+        <div class="ln"><span class="m">− Vorauszahlungen ${year}</span><span class="m">${eur(prepayAll)}</span></div>
+        <div class="ln sum"><span>${expTax - prepayAll >= 0 ? 'voraussichtliche Nachzahlung' : 'voraussichtliche Erstattung'}</span><span>${eur(Math.abs(expTax - prepayAll))}</span></div>
+      </div>
+      <p class="hint small">Die Nachzahlung kommt erst mit dem Steuerbescheid, meist im Folgejahr. Bis dahin bleibt sie Teil der Rücklage.</p>
+    </div>`;
+  bind();
+  el.querySelectorAll('[data-pkey]').forEach(c => c.onchange = () => c.dataset.pdate ? setPrepay(c.dataset.pdate, { paid: c.checked }) : setPaid(c.dataset.pkey, c.checked));
+}
+
 // ---------- Haushalt ----------
 // ---------- Monat: Brutto → Netto → im Geldbeutel ----------
 // Netto = Brutto − Steuer − Ärzteversorgung − alle Versicherungen (beruflich und privat inkl. PKV).
@@ -598,6 +664,7 @@ function renderMore() {
       <label class="row" style="padding:6px 0"><input type="checkbox" class="check" data-flag="vwAuto" ${s.vwAuto ? 'checked' : ''}> <span>Ärzteversorgung automatisch aus dem Gewinn (8 % bis ${sy + 2}, danach 18 % / 7 %)${s.vwAuto ? `: ${eur(vwNow)} pro Jahr` : ''}</span></label>
       ${FIELDS.filter(([k]) => !(k === 'vwYear' && s.vwAuto)).map(([k, l, type]) => `<label class="field"><span>${l}</span>
         <input data-set="${k}" ${type === 'date' ? `type="date" value="${s[k] || ''}"` : `inputmode="${type === 'day' ? 'numeric' : 'decimal'}" value="${type === 'day' ? (s[k] || '') : numStr(s[k])}" placeholder="0"`}></label>`).join('')}
+      <label class="field"><span>Ärzteversorgung zahlst du</span><select data-setsel="vwInterval">${[['m', 'monatlich'], ['q', 'zum Quartalsende'], ['y', 'zum Jahresende']].map(([k, l]) => `<option value="${k}" ${(s.vwInterval || 'm') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <p class="hint small">Steueranteil am Brutto: ${pct(r.tax)} (Steuer geteilt durch erwartetes Brutto). Entnahme-Regel: ${pct(r.net)} vom Brutto.</p>
     </div>
 
@@ -652,6 +719,7 @@ function renderMore() {
     </div>`;
 
   el.querySelectorAll('[data-setyear]').forEach(b => b.onclick = () => { S.setYear = +b.dataset.setyear; renderMore(); });
+  el.querySelectorAll('[data-setsel]').forEach(i => i.onchange = () => { setValue(data, S.setYear, i.dataset.setsel, i.value); persist(); });
   el.querySelectorAll('[data-flag]').forEach(i => i.onchange = () => { setValue(data, S.setYear, i.dataset.flag, i.checked); persist(); });
   el.querySelectorAll('[data-set]').forEach(i => i.onchange = () => {
     const k = i.dataset.set;
@@ -882,6 +950,7 @@ function init() {
   document.querySelectorAll('.bottomnav [data-view]').forEach(b => b.onclick = () => show(b.dataset.view));
   $('#addBtn').onclick = () => Store.unlocked && openEntry(null);
   $('#lockBtn').onclick = lockNow;
+  $('#moreBtn').onclick = () => show('more');
   document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('dialog').close());
   $('#restoreInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) restore(f); };
   let hiddenAt = 0;

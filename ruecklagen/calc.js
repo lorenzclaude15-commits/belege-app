@@ -178,7 +178,10 @@
       for (let m = w.from.getMonth(); m < 12; m++) {
         const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
         const day = d => String(Math.min(num(d) || 1, daysIn(year, m))).padStart(2, '0');
-        if (vw) out.push({ key: 'vw:' + ym, date: `${ym}-${day(s.vwDay || 28)}`, kind: 'vw', name: 'Ärzteversorgung (ca.)', amount: vw / 12 });
+        // Ärzteversorgung monatlich, zum Quartalsende oder zum Jahresende (Einstellung vwInterval)
+        const vi = s.vwInterval || 'm', q0 = Math.max(m - (m % 3), w.from.getMonth());
+        const vwMonths = vi === 'q' ? (m % 3 === 2 ? m - q0 + 1 : 0) : vi === 'y' ? (m === 11 ? w.months : 0) : 1;
+        if (vw && vwMonths) out.push({ key: 'vw:' + ym, date: `${ym}-${day(s.vwDay || 28)}`, kind: 'vw', name: 'Ärzteversorgung (ca.)', amount: vw / 12 * vwMonths });
         if (num(s.loanYear) && loanActive(data, year)) out.push({ key: 'loan:' + ym, date: `${ym}-${day(s.loanDay || 1)}`, kind: 'loan', name: 'Kreditrate', amount: num(s.loanYear) / 12 });
         for (const i of live(data.insurances)) {
           if (!num(i.amount)) continue;
@@ -266,11 +269,37 @@
     return year <= startYear(data) || loanRest(data, new Date(year - 1, 11, 31)) > 0;
   }
 
+  // Bezahlt? Steuervorauszahlungen nur, wenn abgehakt. Lastschriften gelten ab ihrem Termin als bezahlt, außer der Haken wurde entfernt.
+  function isPaid(data, item, asOf) {
+    if (item.kind === 'tax') return !!item.paid;
+    const o = (data.prepay || {})[item.key];
+    return o && o.paid != null ? !!o.paid : item.date <= iso(asOf);
+  }
+  // Was am Stichtag auf dem Geschäftskonto liegen muss: aufgelaufen (zeitanteilig bzw. vom Brutto) minus schon bezahlt
+  // early: auch vorab bezahlte (abgehakte) Posten mit späterem Termin zählen (für den heutigen Stand)
+  function reserve(data, year, asOf, early = true) {
+    const w = span(data, year);
+    if (!w) return null;
+    const chk = check(data, year, asOf), me = chk.monthsEq, fm = fixedMonthly(data, year);
+    const sched = schedule(data, year);
+    const paidOf = f => sched.filter(i => f(i) && isPaid(data, i, asOf) && (early || i.date <= iso(asOf))).reduce((a, i) => a + i.amount, 0);
+    const lines = [];
+    lines.push({ key: 'tax', label: 'Einkommensteuer + Soli', acc: chk.brutto * taxRate(data, year), paid: paidOf(i => i.kind === 'tax') });
+    lines.push({ key: 'vw', label: 'Ärzteversorgung', acc: fm.vw * me, paid: paidOf(i => i.kind === 'vw') });
+    for (const ins of live(data.insurances)) {
+      if (!isPraxis(ins) || !num(ins.amount) || ins.interval === 'm') continue;
+      lines.push({ key: 'ins:' + ins.id, label: ins.name, fee: isFeeName(ins.name), acc: insMonthly(ins) * me, paid: paidOf(i => i.insId === ins.id) });
+    }
+    for (const l of lines) l.need = l.acc - l.paid;
+    const total = lines.reduce((a, l) => a + Math.max(0, l.need), 0);
+    return { asOf: iso(asOf), lines, total, monthsEq: me, brutto: chk.brutto };
+  }
+
   function household(data) {
     return live(data.household).reduce((a, h) => a + num(h.amount), 0);
   }
   function privateIns(data) { return insMonthlyTotal(data, false); }
 
-  const api = { fixedMonthly, insMonthlyTotal, iso, parse, cfg, vwFor, startYear, GLOBAL, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
+  const api = { reserve, isPaid, fixedMonthly, insMonthlyTotal, iso, parse, cfg, vwFor, startYear, GLOBAL, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
   if (typeof module !== 'undefined') module.exports = api; else root.Calc = api;
 })(this);
