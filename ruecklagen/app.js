@@ -185,7 +185,7 @@ function renderHome() {
         <input id="calcIn" class="amount-input" inputmode="decimal" placeholder="0" autocomplete="off"></label>
       <div class="breakdown" id="calcOut"></div>
       <button class="big primary" id="calcBook">Als Eingang buchen</button>
-      <p class="hint small">Regel ${year}: ${pct(r.net)} vom Brutto darfst du entnehmen (Steuer ${pct(r.tax)}, Kredit ${pct(r.loan)}, Versorgungswerk ${pct(r.vw)}, Praxis-Versicherungen ${pct(r.ins)}). PKV und private Versicherungen zahlst du danach vom Netto.</p>
+      <p class="hint small">Regel ${year}: ${pct(r.net)} vom Brutto darfst du entnehmen (Steuer ${pct(r.tax)}, Kredit ${pct(r.loan)}, Versorgungswerk ${pct(r.vw)}, Praxis-Versicherungen ${pct(r.ins)}). PKV und private Versicherungen zahlst du danach vom Netto.${D().settings.taxAuto && +D().settings.expectedBrutto ? ` Darin steckt ein Steuervorteil von ${pct(Calc.taxEstimate(D(), year).saving / +D().settings.expectedBrutto)} durch Abschreibung, Kreditzinsen und Kammerbeitrag.` : ''}</p>
     </div>
 
     <div class="card">
@@ -412,7 +412,9 @@ function taxCard(data, year) {
       ${ln('Solidaritätszuschlag', e.soli, 1)}
       ${e.kist ? ln('Kirchensteuer', e.kist, 1) : ''}
       <div class="ln sum"><span>Steuer gesamt</span><span>${eur(e.total)}</span></div>
+      <div class="ln"><span style="color:var(--ok)">Steuervorteil durch Abschreibung, Zinsen, Kammer</span><span style="color:var(--ok)">${eur(e.saving)}</span></div>
     </div>
+    <p class="hint small">Ohne diese Abzüge wäre die Steuer ${eur(e.total + e.saving)}. Der Vorteil ist in der Entnahme-Regel schon eingerechnet: Du darfst dadurch ${b ? pct(e.saving / b) : '0 %'} vom Brutto mehr entnehmen.</p>
     <p class="hint small">${e.months} Monate ab Start. BU, Lebens-, Unfall- und Haftpflichtversicherung wirken neben der PKV steuerlich meist nicht mehr, weil der Basisanteil der PKV den Höchstbetrag schon ausschöpft.</p>
   </div>`;
 }
@@ -757,6 +759,7 @@ async function exportExcel(year) {
       ['− Praxisversicherungen, Kammer (Betriebsausgaben)', x.ba.ins], ['− Fahrten Wohnung–Praxis', x.ba.commute], ['− Sonstige Praxiskosten', x.ba.other],
       ['= Gewinn', x.profit], ['− Ärzteversorgung (Altersvorsorge)', x.vw], ['− Kranken/Pflege Basis + sonstige Vorsorge', x.vorsorge],
       ['= zu versteuerndes Einkommen', x.zve], ['Einkommensteuer', x.income], ['Solidaritätszuschlag', x.soli], ['Kirchensteuer', x.kist], ['Steuer gesamt', x.total],
+      ['Steuervorteil durch Abschreibung, Zinsen, Kammer', x.saving],
     ].forEach(r => st.addRow(r));
     setMoney(st, [2]);
   }

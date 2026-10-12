@@ -41,12 +41,14 @@
     if (/kranken|pkv|pflege/i.test(n)) return 'basis';
     return 'vorsorge';
   }
-  function taxEstimate(data, year) {
+  const isFeeName = n => /kammer|verband/i.test(n || '');
+  // plain = ohne Abschreibung, Kreditzinsen und Kammerbeitrag gerechnet, um deren Steuervorteil zu zeigen
+  function taxEstimate(data, year, plain) {
     const s = data.settings, w = span(data, year), months = w ? w.months : 12, f = months / 12;
     const married = !!s.married, k = married ? 2 : 1, kids = num(s.children);
-    const sumIns = kind => live(data.insurances).filter(i => taxKind(i) === kind).reduce((a, i) => a + insMonthly(i) * months, 0);
+    const sumIns = kind => live(data.insurances).filter(i => taxKind(i) === kind && !(plain && isFeeName(i.name))).reduce((a, i) => a + insMonthly(i) * months, 0);
     const ba = {
-      afa: num(s.afaYear) * f, interest: num(s.interestYear) * f, ins: sumIns('be'),
+      afa: plain ? 0 : num(s.afaYear) * f, interest: plain ? 0 : num(s.interestYear) * f, ins: sumIns('be'),
       commute: num(s.commuteKm) * T.pendler * (num(s.workDays) || 220) * f, other: num(s.otherCosts) * f,
     };
     const profit = num(s.expectedBrutto) - ba.afa - ba.interest - ba.ins - ba.commute - ba.other;
@@ -61,7 +63,9 @@
     const income = useKfb ? withKfb + kg : without; // bei Freibetrag wird das Kindergeld hinzugerechnet
     const soli = Math.max(0, Math.min(0.055 * withKfb, 0.119 * (withKfb - T.soliFg * k)));
     const kist = s.church ? T.kist * withKfb : 0;
-    return { months, ba, profit, vw, basis, other, vorsorge, zve, kfb, useKfb, kg, income, soli, kist, total: income + soli + kist };
+    const total = income + soli + kist;
+    const saving = plain ? 0 : taxEstimate(data, year, true).total - total;
+    return { months, ba, profit, vw, basis, other, vorsorge, zve, kfb, useKfb, kg, income, soli, kist, total, saving };
   }
   function insMonthly(i) { return num(i.amount) * (FACTOR[i.interval] ?? 1); }
   // Praxis-Versicherungen gehen vom Brutto ab, private (z. B. PKV) erst vom Netto
