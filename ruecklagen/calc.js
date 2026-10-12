@@ -12,10 +12,38 @@
   const live = list => (list || []).filter(x => !x.deleted);
   const num = v => (Number.isFinite(+v) ? +v : 0);
 
-  // Steueranteil am Brutto: erwartete Steuer geteilt durchs erwartete Brutto (nicht durchs zu versteuernde Einkommen)
+  // Werte je Jahr: Grundwerte, überlagert von den Änderungen aller Jahre bis einschließlich "year" (werden also fortgeschrieben)
+  const GLOBAL = ['start', 'loanRest', 'loanDay', 'vwDay'];
+  function cfg(data, year) {
+    const s = { ...data.settings };
+    const ys = data.years || {};
+    for (const y of Object.keys(ys).map(Number).sort((a, b) => a - b)) {
+      if (y > year) break;
+      for (const [k, v] of Object.entries(ys[y])) if (k !== 'updatedAt' && !GLOBAL.includes(k)) s[k] = v;
+    }
+    // Abschreibung endet nach der eingestellten Laufzeit
+    const sy = startYear(data);
+    if (num(s.afaYears) && year >= sy + num(s.afaYears)) s.afaYear = 0;
+    return s;
+  }
+  const startYear = data => (data.settings.start ? +data.settings.start.slice(0, 4) : new Date().getFullYear());
+
+  // Ärzteversorgung: fester Jahresbeitrag oder automatisch aus dem Gewinn (Bayerische Ärzteversorgung, Werte 2026)
+  const BAEV = { bbg: 101400, max: 37710, low: 0.08, full: 0.18, above: 0.07 };
+  function vwFor(data, year) {
+    const s = cfg(data, year);
+    if (!s.vwAuto) return num(s.vwYear);
+    const p = profitOf(data, year), annual = p.f > 0 ? p.profit / p.f : 0;
+    if (annual <= 0) return 0;
+    // 8 % im Jahr der Niederlassung und den zwei folgenden Kalenderjahren, danach 18 % bis BBG und 7 % darüber
+    const v = year <= startYear(data) + 2 ? BAEV.low * annual
+      : BAEV.full * Math.min(annual, BAEV.bbg) + BAEV.above * Math.max(0, annual - BAEV.bbg);
+    return Math.min(v, BAEV.max);
+  }
+
   // Steueranteil am Brutto: erwartete Steuer geteilt durchs erwartete Brutto
   function taxRate(data, year) {
-    const s = data.settings;
+    const s = cfg(data, year);
     const base = num(s.expectedBrutto) || num(s.taxableIncome);
     const tax = s.taxAuto ? taxEstimate(data, year || new Date().getFullYear()).total : num(s.taxAmount);
     return base > 0 ? tax / base : 0;
@@ -43,17 +71,21 @@
   }
   const isFeeName = n => /kammer|verband/i.test(n || '');
   // plain = ohne Abschreibung, Kreditzinsen und Kammerbeitrag gerechnet, um deren Steuervorteil zu zeigen
-  function taxEstimate(data, year, plain) {
-    const s = data.settings, w = span(data, year), months = w ? w.months : 12, f = months / 12;
-    const married = !!s.married, k = married ? 2 : 1, kids = num(s.children);
-    const sumIns = kind => live(data.insurances).filter(i => taxKind(i) === kind && !(plain && isFeeName(i.name))).reduce((a, i) => a + insMonthly(i) * months, 0);
+  const sumIns = (data, months, kind, plain) => live(data.insurances).filter(i => taxKind(i) === kind && !(plain && isFeeName(i.name))).reduce((a, i) => a + insMonthly(i) * months, 0);
+  // Gewinn im Zeitraum des Jahres (ohne Ärzteversorgung, die erst danach abgeht)
+  function profitOf(data, year, plain) {
+    const s = cfg(data, year), w = span(data, year), months = w ? w.months : 12, f = months / 12;
     const ba = {
-      afa: plain ? 0 : num(s.afaYear) * f, interest: plain ? 0 : num(s.interestYear) * f, ins: sumIns('be'),
+      afa: plain ? 0 : num(s.afaYear) * f, interest: plain ? 0 : num(s.interestYear) * f, ins: sumIns(data, months, 'be', plain),
       commute: num(s.commuteKm) * T.pendler * (num(s.workDays) || 220) * f, other: num(s.otherCosts) * f,
     };
-    const profit = num(s.expectedBrutto) - ba.afa - ba.interest - ba.ins - ba.commute - ba.other;
-    const vw = Math.min(num(s.vwYear) * f, T.altCap * k);
-    const basis = sumIns('basis') * ((s.pkvBasisPct ?? 80) / 100), other = sumIns('vorsorge');
+    return { s, months, f, ba, profit: num(s.expectedBrutto) - ba.afa - ba.interest - ba.ins - ba.commute - ba.other };
+  }
+  function taxEstimate(data, year, plain) {
+    const { s, months, f, ba, profit } = profitOf(data, year, plain);
+    const married = !!s.married, k = married ? 2 : 1, kids = num(s.children);
+    const vw = Math.min(vwFor(data, year) * f, T.altCap * k);
+    const basis = sumIns(data, months, 'basis') * ((s.pkvBasisPct ?? 80) / 100), other = sumIns(data, months, 'vorsorge');
     const vorsorge = Math.max(basis, Math.min(basis + other, T.sonstCap * k));
     const zve = Math.max(0, profit - vw - vorsorge - T.saPausch * k);
     const est = x => (married ? 2 * tarif(x / 2) : tarif(x));
@@ -81,15 +113,15 @@
     return { from, to, months: 12 - from.getMonth() };
   }
 
-  function fixedMonthly(data) {
-    const s = data.settings;
-    return { loan: num(s.loanYear) / 12, vw: num(s.vwYear) / 12, ins: insMonthlyTotal(data) };
+  function fixedMonthly(data, year) {
+    const s = cfg(data, year);
+    return { loan: loanActive(data, year) ? num(s.loanYear) / 12 : 0, vw: vwFor(data, year) / 12, ins: insMonthlyTotal(data) };
   }
 
   // Regel pro Eingang: welcher Anteil vom Brutto geht in welche Rücklage, bezogen aufs erwartete Brutto des Jahres
   function rule(data, year) {
-    const s = data.settings, w = span(data, year), q = taxRate(data, year);
-    const fm = fixedMonthly(data), months = w ? w.months : 12;
+    const s = cfg(data, year), w = span(data, year), q = taxRate(data, year);
+    const fm = fixedMonthly(data, year), months = w ? w.months : 12;
     const exp = num(s.expectedBrutto);
     const share = v => (exp > 0 ? (v * months) / exp : 0);
     const parts = { tax: q, loan: share(fm.loan), vw: share(fm.vw), ins: share(fm.ins) };
@@ -122,7 +154,7 @@
     const ents = entriesOf(data, year).filter(e => e.date <= iso(asOf));
     const brutto = ents.reduce((a, e) => a + num(e.brutto), 0);
     const netto = ents.reduce((a, e) => a + num(e.netto), 0);
-    const q = taxRate(data, year), fm = fixedMonthly(data);
+    const q = taxRate(data, year), fm = fixedMonthly(data, year);
     let monthsEq = 0;
     if (w && asOf >= w.from) {
       const end = asOf < w.to ? asOf : w.to;
@@ -136,7 +168,7 @@
 
   // Termine des Jahres: Steuervorauszahlungen, Versorgungswerk, Kredit, Versicherungen
   function schedule(data, year) {
-    const s = data.settings, w = span(data, year), out = [];
+    const s = cfg(data, year), w = span(data, year), out = [], vw = vwFor(data, year);
     const pre = data.prepay || {};
     for (const md of TAX_DATES) {
       const date = `${year}-${md}`, o = pre[date] || {};
@@ -146,8 +178,8 @@
       for (let m = w.from.getMonth(); m < 12; m++) {
         const ym = `${year}-${String(m + 1).padStart(2, '0')}`;
         const day = d => String(Math.min(num(d) || 1, daysIn(year, m))).padStart(2, '0');
-        if (num(s.vwYear)) out.push({ key: 'vw:' + ym, date: `${ym}-${day(s.vwDay || 28)}`, kind: 'vw', name: 'Ärzteversorgung (ca.)', amount: num(s.vwYear) / 12 });
-        if (num(s.loanYear)) out.push({ key: 'loan:' + ym, date: `${ym}-${day(s.loanDay || 1)}`, kind: 'loan', name: 'Kreditrate', amount: num(s.loanYear) / 12 });
+        if (vw) out.push({ key: 'vw:' + ym, date: `${ym}-${day(s.vwDay || 28)}`, kind: 'vw', name: 'Ärzteversorgung (ca.)', amount: vw / 12 });
+        if (num(s.loanYear) && loanActive(data, year)) out.push({ key: 'loan:' + ym, date: `${ym}-${day(s.loanDay || 1)}`, kind: 'loan', name: 'Kreditrate', amount: num(s.loanYear) / 12 });
         for (const i of live(data.insurances)) {
           if (!num(i.amount)) continue;
           const first = m === w.from.getMonth();
@@ -225,7 +257,13 @@
       const due = new Date(d.getFullYear(), d.getMonth(), Math.min(num(s.loanDay) || 1, daysIn(d.getFullYear(), d.getMonth())));
       if (due >= st && due <= asOf) months++;
     }
-    return Math.max(0, num(s.loanRest) - months * (num(s.loanYear) / 12));
+    return Math.max(0, num(s.loanRest) - months * (num(cfg(data, asOf.getFullYear()).loanYear) / 12));
+  }
+
+  // Kredit läuft, solange zu Jahresbeginn noch Restschuld da ist (ohne Restschuld-Angabe: immer)
+  function loanActive(data, year) {
+    if (!num(data.settings.loanRest)) return true;
+    return year <= startYear(data) || loanRest(data, new Date(year - 1, 11, 31)) > 0;
   }
 
   function household(data) {
@@ -233,6 +271,6 @@
   }
   function privateIns(data) { return insMonthlyTotal(data, false); }
 
-  const api = { iso, parse, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
+  const api = { iso, parse, cfg, vwFor, startYear, GLOBAL, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
   if (typeof module !== 'undefined') module.exports = api; else root.Calc = api;
 })(this);

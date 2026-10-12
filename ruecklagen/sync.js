@@ -21,6 +21,10 @@
     for (const [k, v] of Object.entries(b.prepay || {})) {
       if (!prepay[k] || (v.updatedAt || 0) > (prepay[k].updatedAt || 0)) prepay[k] = v;
     }
+    const years = { ...(a.years || {}) };
+    for (const [k, v] of Object.entries(b.years || {})) {
+      if (!years[k] || (v.updatedAt || 0) > (years[k].updatedAt || 0)) years[k] = v;
+    }
     return {
       ...a,
       settings: (b.settings?.updatedAt || 0) > (a.settings?.updatedAt || 0) ? b.settings : a.settings,
@@ -28,6 +32,7 @@
       household: byId(a.household, b.household),
       entries: byId(a.entries, b.entries),
       prepay,
+      years,
     };
   }
 

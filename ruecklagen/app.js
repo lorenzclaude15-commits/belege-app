@@ -144,7 +144,8 @@ function refresh() {
 }
 
 function years() {
-  const ys = new Set([new Date().getFullYear()]);
+  const now = new Date().getFullYear();
+  const ys = new Set([now, now + 1, now + 2, now + 3]); // Folgejahre als Prognose
   Calc.live(D().entries).forEach(e => ys.add(+e.date.slice(0, 4)));
   return [...ys].sort((a, b) => b - a);
 }
@@ -153,8 +154,8 @@ function asOf(year) {
   return t.getFullYear() === year ? t : new Date(year, 11, 31);
 }
 function needsSetup() {
-  const s = D().settings;
-  return !s.expectedBrutto || !s.taxableIncome;
+  const s = Calc.cfg(D(), new Date().getFullYear());
+  return !s.expectedBrutto || (!s.taxAuto && !s.taxableIncome);
 }
 
 // ---------- Start ----------
@@ -185,7 +186,7 @@ function renderHome() {
         <input id="calcIn" class="amount-input" inputmode="decimal" placeholder="0" autocomplete="off"></label>
       <div class="breakdown" id="calcOut"></div>
       <button class="big primary" id="calcBook">Als Eingang buchen</button>
-      <p class="hint small">Regel ${year}: ${pct(r.net)} vom Brutto darfst du entnehmen (Steuer ${pct(r.tax)}, Kredit ${pct(r.loan)}, Versorgungswerk ${pct(r.vw)}, Praxis-Versicherungen ${pct(r.ins)}). PKV und private Versicherungen zahlst du danach vom Netto.${D().settings.taxAuto && +D().settings.expectedBrutto ? ` Darin steckt ein Steuervorteil von ${pct(Calc.taxEstimate(D(), year).saving / +D().settings.expectedBrutto)} durch Abschreibung, Kreditzinsen und Kammerbeitrag.` : ''}</p>
+      <p class="hint small">Regel ${year}: ${pct(r.net)} vom Brutto darfst du entnehmen (Steuer ${pct(r.tax)}, Kredit ${pct(r.loan)}, Versorgungswerk ${pct(r.vw)}, Praxis-Versicherungen ${pct(r.ins)}). PKV und private Versicherungen zahlst du danach vom Netto.${Calc.cfg(D(), year).taxAuto && +Calc.cfg(D(), year).expectedBrutto ? ` Darin steckt ein Steuervorteil von ${pct(Calc.taxEstimate(D(), year).saving / +Calc.cfg(D(), year).expectedBrutto)} durch Abschreibung, Kreditzinsen und Kammerbeitrag.` : ''}</p>
     </div>
 
     <div class="card">
@@ -302,7 +303,7 @@ function renderYear() {
   const el = $('#view-year'), data = D(), year = S.year;
   const p = periodRange(year), t = Calc.totals(data, year, p.from, p.to);
   const chk = Calc.check(data, year, asOf(year));
-  const r = Calc.rule(data, year), s = data.settings;
+  const r = Calc.rule(data, year), s = Calc.cfg(data, year);
   const it = Calc.insuranceTable(data, year, asOf(year));
   const sched = Calc.schedule(data, year);
   const mon = Calc.monthly(data, year);
@@ -393,7 +394,7 @@ function renderYear() {
 
 const isFee = i => i.kind === 'ins' && /kammer|verband/i.test(i.name);
 function taxCard(data, year) {
-  const e = Calc.taxEstimate(data, year), b = +data.settings.expectedBrutto || 0;
+  const e = Calc.taxEstimate(data, year), b = +Calc.cfg(data, year).expectedBrutto || 0;
   const ln = (l, v, m) => `<div class="ln"><span class="${m ? 'm' : ''}">${l}</span><span class="${m ? 'm' : ''}">${eur(v)}</span></div>`;
   return `<div class="card">
     <h2>Steuerschätzung ${year}</h2>
@@ -431,7 +432,7 @@ function taxRow(i) {
 
 async function setPrepay(date, patch) {
   const data = D(), cur = data.prepay[date] || {};
-  data.prepay[date] = { amount: cur.amount ?? (+data.settings.taxPrepay || 0), paid: !!cur.paid, ...patch, updatedAt: Date.now() };
+  data.prepay[date] = { amount: cur.amount ?? (+Calc.cfg(data, +date.slice(0, 4)).taxPrepay || 0), paid: !!cur.paid, ...patch, updatedAt: Date.now() };
   await persist();
 }
 
@@ -444,7 +445,7 @@ function renderHouse() {
   const hh = Calc.household(data), priv = Calc.privateIns(data);
   const privList = Calc.live(data.insurances).filter(i => !Calc.isPraxis(i) && +i.amount);
   const r = Calc.rule(data, year);
-  const planNet = (+data.settings.expectedBrutto || 0) * r.net / (r.months || 12);
+  const planNet = (+Calc.cfg(data, year).expectedBrutto || 0) * r.net / (r.months || 12);
   el.innerHTML = `
     <div class="card hero">
       <div class="lbl">Nach Haushalt frei pro Monat</div>
@@ -488,6 +489,7 @@ const TAX_FIELDS = [
   ['commuteKm', 'Fahrt Wohnung – Praxis, einfache Strecke in km'],
   ['workDays', 'Arbeitstage pro Jahr'],
   ['afaYear', 'Abschreibung Praxiskauf pro Jahr'],
+  ['afaYears', 'Abschreibung läuft insgesamt Jahre (danach 0)'],
   ['interestYear', 'Kreditzinsen pro Jahr (nur Zinsanteil)'],
   ['otherCosts', 'Sonstige Praxiskosten pro Jahr (falls im Brutto noch enthalten)'],
   ['pkvBasisPct', 'Basisanteil der PKV in % (steht in der PKV-Bescheinigung)'],
@@ -507,13 +509,31 @@ const FIELDS = [
 
 const TAX_KIND = { be: 'Betriebsausgabe', basis: 'Basis-Kranken/Pflege', vorsorge: 'sonstige Vorsorge (gedeckelt)', none: 'keine Wirkung' };
 
+// Jahr, dessen Werte unter „Mehr“ gerade bearbeitet werden
+S.setYear = new Date().getFullYear();
+function setValue(data, year, k, v) {
+  if (Calc.GLOBAL.includes(k) || year <= Calc.startYear(data)) {
+    data.settings[k] = v; data.settings.updatedAt = Date.now();
+  } else {
+    data.years = data.years || {};
+    data.years[year] = { ...(data.years[year] || {}), [k]: v, updatedAt: Date.now() };
+  }
+}
+
 function renderMore() {
-  const el = $('#view-more'), data = D(), s = data.settings;
-  const r = Calc.rule(data, new Date().getFullYear());
+  const el = $('#view-more'), data = D(), sy = Calc.startYear(data);
+  if (S.setYear < sy) S.setYear = sy;
+  const s = Calc.cfg(data, S.setYear);
+  const r = Calc.rule(data, S.setYear);
+  const yrs = []; for (let y = sy; y <= Math.max(new Date().getFullYear() + 3, sy + 3); y++) yrs.push(y);
+  const vwNow = Calc.vwFor(data, S.setYear);
   el.innerHTML = `
+    <div class="chips" style="margin-bottom:10px">${yrs.map(y => `<button class="chip ${y === S.setYear ? 'on' : ''}" data-setyear="${y}">Werte ${y}</button>`).join('')}</div>
+    <p class="hint small" style="margin-top:0">Jedes Jahr übernimmt die Werte des Vorjahres. Was du hier für ${S.setYear} änderst, gilt ab ${S.setYear}; frühere Jahre bleiben, wie sie sind.</p>
     <div class="card setgrid">
-      <h2>Werte</h2>
-      ${FIELDS.map(([k, l, type]) => `<label class="field"><span>${l}</span>
+      <h2>Werte ${S.setYear}</h2>
+      <label class="row" style="padding:6px 0"><input type="checkbox" class="check" data-flag="vwAuto" ${s.vwAuto ? 'checked' : ''}> <span>Ärzteversorgung automatisch aus dem Gewinn (8 % bis ${sy + 2}, danach 18 % / 7 %)${s.vwAuto ? `: ${eur(vwNow)} pro Jahr` : ''}</span></label>
+      ${FIELDS.filter(([k]) => !(k === 'vwYear' && s.vwAuto)).map(([k, l, type]) => `<label class="field"><span>${l}</span>
         <input data-set="${k}" ${type === 'date' ? `type="date" value="${s[k] || ''}"` : `inputmode="${type === 'day' ? 'numeric' : 'decimal'}" value="${type === 'day' ? (s[k] || '') : numStr(s[k])}" placeholder="0"`}></label>`).join('')}
       <p class="hint small">Steueranteil am Brutto: ${pct(r.tax)} (Steuer geteilt durch erwartetes Brutto). Entnahme-Regel: ${pct(r.net)} vom Brutto.</p>
     </div>
@@ -568,11 +588,11 @@ function renderMore() {
       <button class="text danger" id="wipe">Alle Daten auf diesem Gerät löschen</button>
     </div>`;
 
-  el.querySelectorAll('[data-flag]').forEach(i => i.onchange = () => { s[i.dataset.flag] = i.checked; s.updatedAt = Date.now(); persist(); });
+  el.querySelectorAll('[data-setyear]').forEach(b => b.onclick = () => { S.setYear = +b.dataset.setyear; renderMore(); });
+  el.querySelectorAll('[data-flag]').forEach(i => i.onchange = () => { setValue(data, S.setYear, i.dataset.flag, i.checked); persist(); });
   el.querySelectorAll('[data-set]').forEach(i => i.onchange = () => {
     const k = i.dataset.set;
-    s[k] = i.type === 'date' ? i.value : parseNum(i.value);
-    s.updatedAt = Date.now();
+    setValue(data, S.setYear, k, i.type === 'date' ? i.value : parseNum(i.value));
     persist();
   });
   const ins = id => data.insurances.find(x => x.id === id);
@@ -670,7 +690,7 @@ function loadScript(src) {
 
 async function exportExcel(year) {
   try { await loadScript('vendor/exceljs.min.js'); } catch (e) { toast('Excel-Modul fehlt, bitte einmal online öffnen'); return; }
-  const data = D(), s = data.settings, wb = new ExcelJS.Workbook();
+  const data = D(), s = Calc.cfg(data, year), wb = new ExcelJS.Workbook();
   const money = '#,##0.00 "€"', T = asOf(year), r = Calc.rule(data, year);
   const head = ws => { const h = ws.getRow(1); h.font = { bold: true, color: { argb: 'FFFFFFFF' } }; h.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } }; ws.views = [{ state: 'frozen', ySplit: 1 }]; };
   const setMoney = (ws, cols) => cols.forEach(c => { ws.getColumn(c).numFmt = money; });
@@ -702,7 +722,7 @@ async function exportExcel(year) {
   b.addRow(['Parameter', 'Wert']).font = { bold: true };
   [
     ['Steuersatz auf Brutto', r.tax], ['Entnahme-Regel (Anteil vom Brutto)', r.net],
-    ['Steuervorauszahlung pro Quartal', +s.taxPrepay || 0], ['Ärzteversorgung pro Jahr', +s.vwYear || 0],
+    ['Steuervorauszahlung pro Quartal', +s.taxPrepay || 0], ['Ärzteversorgung pro Jahr', Calc.vwFor(data, year)],
     ['Kreditraten pro Jahr', +s.loanYear || 0], ['Erwartetes Brutto im Jahr', +s.expectedBrutto || 0],
   ].forEach(([l, v], i) => { const row = b.addRow([l, v]); if (i < 2) row.getCell(2).numFmt = '0.0%'; });
   setMoney(b, [2, 3]);
