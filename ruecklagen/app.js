@@ -705,7 +705,7 @@ function renderMore() {
       <h2>Mit PC synchronisieren</h2>
       ${D().local?.sync?.token ? `<p class="hint small">Eingerichtet. ${D().local.sync.last ? 'Zuletzt abgeglichen ' + new Date(D().local.sync.last).toLocaleString('de-DE') : 'Noch nicht abgeglichen'}.</p>
         <button class="big" id="syncGo">🔄 Jetzt abgleichen</button>
-        <button class="text danger" id="syncOff">Synchronisation auf diesem Gerät ausschalten</button>`
+        <button class="text danger" id="syncOff">Schlüssel ändern / Synchronisation ausschalten</button>`
       : `<p class="hint small">Handy und PC gleichen sich über ein geheimes GitHub-Gist ab. Dort liegt nur ein verschlüsselter Block, lesbar nur mit deinem Sync-Passwort. Auf beiden Geräten denselben Schlüssel und dasselbe Passwort eintragen.</p>
         <label class="field"><span>GitHub-Schlüssel (Token mit Recht „gist“)</span><input id="syncTok" autocomplete="off" placeholder="ghp_…"></label>
         <label class="field"><span>Sync-Passwort (mind. 10 Zeichen)</span><input id="syncPass" type="password" autocomplete="new-password"></label>
@@ -743,16 +743,23 @@ function renderMore() {
   $('#xls').onclick = () => exportExcel(S.year);
   $('#syncGo')?.addEventListener('click', () => syncNow(true));
   $('#syncOff')?.addEventListener('click', async () => {
-    if (!confirm('Synchronisation hier ausschalten? Die Daten auf diesem Gerät bleiben erhalten.')) return;
+    if (!confirm('Synchronisation hier ausschalten? Die Daten auf diesem Gerät bleiben erhalten. Danach kannst du Schlüssel und Passwort neu eintragen.')) return;
     delete D().local.sync; await Store.save(); renderMore();
   });
   $('#syncSet')?.addEventListener('click', async () => {
     const token = $('#syncTok').value.trim(), pass = $('#syncPass').value;
     if (!/^(ghp_|github_pat_|gho_)/.test(token)) { toast('Das sieht nicht nach einem GitHub-Schlüssel aus'); return; }
     if (pass.length < 10) { toast('Sync-Passwort braucht mindestens 10 Zeichen'); return; }
-    D().local = { ...(D().local || {}), sync: { token, pass } };
-    await Store.save();
-    await syncNow(true);
+    // Erst prüfen, dann speichern: ein falsch eingegebener Schlüssel wird nicht übernommen
+    const btn = $('#syncSet'); btn.disabled = true; btn.textContent = 'Prüfe …';
+    try {
+      const merged = await Sync.run({ ...D(), local: { ...(D().local || {}), sync: { token, pass } } });
+      Store.data = merged; await Store.save(); toast('Synchronisation eingeschaltet');
+    } catch (e) {
+      toast(e.message + '. Bitte Schlüssel und Passwort prüfen.', 6000);
+      btn.disabled = false; btn.textContent = 'Synchronisation einschalten';
+      return;
+    }
     renderMore();
   });
   $('#bak').onclick = async () => deliver(new Blob([await Store.backup()], { type: 'application/json' }), `Ruecklagen_Sicherung_${todayIso()}.json`, 'Verschlüsselt mit deiner PIN');
