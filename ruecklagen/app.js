@@ -662,8 +662,9 @@ function renderMore() {
     <p class="hint small" style="margin-top:0">Jedes Jahr übernimmt die Werte des Vorjahres. Was du hier für ${S.setYear} änderst, gilt ab ${S.setYear}; frühere Jahre bleiben, wie sie sind.</p>
     <div class="card setgrid">
       <h2>Werte ${S.setYear}</h2>
-      <label class="row" style="padding:6px 0"><input type="checkbox" class="check" data-flag="vwAuto" ${s.vwAuto ? 'checked' : ''}> <span>Ärzteversorgung automatisch aus dem Gewinn (8 % bis ${sy + 2}, danach 18 % / 7 %)${s.vwAuto ? `: ${eur(vwNow)} pro Jahr` : ''}</span></label>
-      ${s.vwAuto ? '' : `<label class="field"><span>Ärzteversorgung fest pro Monat (unabhängig vom Gewinn)</span><input data-vwmonth inputmode="decimal" value="${numStr(Math.round((+s.vwYear || 0) / 12 * 100) / 100)}" placeholder="0"><span class="small muted">= ${eur(+s.vwYear || 0)} pro Jahr</span></label>`}
+      ${(() => { const vm = Calc.vwMode(data, S.setYear); return `<label class="field"><span>Ärzteversorgung ${S.setYear} (gilt nur für dieses Jahr)</span><select data-vwmode>${[['auto', `automatisch aus dem Gewinn (8 % bis ${sy + 2}, danach voll)`], ['low', '8 % vom Gewinn'], ['full', 'voller Beitrag (18 % / 7 % über BBG)'], ['fixed', 'fester Betrag pro Monat']].map(([k, l]) => `<option value="${k}" ${vm.mode === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        ${vm.mode === 'fixed' ? '' : `<span class="small muted">= ${eur(vwNow)} pro Jahr, ${eur(vwNow / 12)} pro Monat</span>`}</label>
+      ${vm.mode === 'fixed' ? `<label class="field"><span>Ärzteversorgung fest pro Monat</span><input data-vwmonth inputmode="decimal" value="${numStr(Math.round(vm.fixedYear / 12 * 100) / 100)}" placeholder="0"><span class="small muted">= ${eur(vm.fixedYear)} pro Jahr</span></label>` : ''}`; })()}
       ${FIELDS.filter(([k]) => k !== 'vwYear').map(([k, l, type]) => `<label class="field"><span>${l}</span>
         <input data-set="${k}" ${type === 'date' ? `type="date" value="${s[k] || ''}"` : `inputmode="${type === 'day' ? 'numeric' : 'decimal'}" value="${type === 'day' ? (s[k] || '') : numStr(s[k])}" placeholder="0"`}></label>`).join('')}
       <label class="field"><span>Ärzteversorgung zahlst du</span><select data-setsel="vwInterval">${[['m', 'monatlich'], ['q', 'zum Quartalsende'], ['y', 'zum Jahresende']].map(([k, l]) => `<option value="${k}" ${(s.vwInterval || 'm') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
@@ -721,7 +722,10 @@ function renderMore() {
     </div>`;
 
   el.querySelectorAll('[data-setyear]').forEach(b => b.onclick = () => { S.setYear = +b.dataset.setyear; renderMore(); });
-  el.querySelector('[data-vwmonth]')?.addEventListener('change', e => { setValue(data, S.setYear, 'vwYear', parseNum(e.target.value) * 12); persist(); });
+  // Ärzteversorgung immer nur fürs gewählte Jahr speichern, nicht fortschreiben
+  const setVw = patch => { data.years = data.years || {}; data.years[S.setYear] = { ...(data.years[S.setYear] || {}), ...patch, updatedAt: Date.now() }; persist(); };
+  el.querySelector('[data-vwmode]')?.addEventListener('change', e => { const vm = Calc.vwMode(data, S.setYear); setVw(e.target.value === 'fixed' ? { vwMode: 'fixed', vwYear: vm.fixedYear || 20400 } : { vwMode: e.target.value }); });
+  el.querySelector('[data-vwmonth]')?.addEventListener('change', e => setVw({ vwMode: 'fixed', vwYear: parseNum(e.target.value) * 12 }));
   el.querySelectorAll('[data-setsel]').forEach(i => i.onchange = () => { setValue(data, S.setYear, i.dataset.setsel, i.value); persist(); });
   el.querySelectorAll('[data-flag]').forEach(i => i.onchange = () => { setValue(data, S.setYear, i.dataset.flag, i.checked); persist(); });
   el.querySelectorAll('[data-set]').forEach(i => i.onchange = () => {

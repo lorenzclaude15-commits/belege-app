@@ -30,13 +30,21 @@
 
   // Ärzteversorgung: fester Jahresbeitrag oder automatisch aus dem Gewinn (Bayerische Ärzteversorgung, Werte 2026)
   const BAEV = { bbg: 101400, max: 37710, low: 0.08, full: 0.18, above: 0.07 };
+  // Wahl gilt nur für das eine Jahr (wird nicht fortgeschrieben): auto | low (8 %) | full (18 %/7 %) | fixed (fester Betrag)
+  // Altbestand: settings.vwAuto = false bedeutete "fest" und gilt nur noch fürs Startjahr
+  function vwMode(data, year) {
+    const y = (data.years || {})[year] || {};
+    const mode = y.vwMode ?? (year === startYear(data) && data.settings.vwAuto === false ? 'fixed' : 'auto');
+    return { mode, fixedYear: num(y.vwYear ?? data.settings.vwYear) };
+  }
   function vwFor(data, year) {
-    const s = cfg(data, year);
-    if (!s.vwAuto) return num(s.vwYear);
+    const { mode, fixedYear } = vwMode(data, year);
+    if (mode === 'fixed') return fixedYear;
     const p = profitOf(data, year), annual = p.f > 0 ? p.profit / p.f : 0;
     if (annual <= 0) return 0;
-    // 8 % im Jahr der Niederlassung und den zwei folgenden Kalenderjahren, danach 18 % bis BBG und 7 % darüber
-    const v = year <= startYear(data) + 2 ? BAEV.low * annual
+    // automatisch: 8 % im Jahr der Niederlassung und den zwei folgenden Kalenderjahren, danach 18 % bis BBG und 7 % darüber
+    const low = mode === 'low' || (mode === 'auto' && year <= startYear(data) + 2);
+    const v = low ? BAEV.low * annual
       : BAEV.full * Math.min(annual, BAEV.bbg) + BAEV.above * Math.max(0, annual - BAEV.bbg);
     return Math.min(v, BAEV.max);
   }
@@ -300,6 +308,6 @@
   }
   function privateIns(data) { return insMonthlyTotal(data, false); }
 
-  const api = { reserve, isPaid, fixedMonthly, insMonthlyTotal, iso, parse, cfg, vwFor, startYear, GLOBAL, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
+  const api = { vwMode, reserve, isPaid, fixedMonthly, insMonthlyTotal, iso, parse, cfg, vwFor, startYear, GLOBAL, taxRate, taxEstimate, taxKind, tarif, insMonthly, span, rule, split, rated, check, schedule, totals, insuranceTable, monthly, loanRest, household, privateIns, isPraxis, live, INTERVAL_NAME };
   if (typeof module !== 'undefined') module.exports = api; else root.Calc = api;
 })(this);
