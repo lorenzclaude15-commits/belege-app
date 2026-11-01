@@ -663,7 +663,8 @@ function renderMore() {
     <div class="card setgrid">
       <h2>Werte ${S.setYear}</h2>
       <label class="row" style="padding:6px 0"><input type="checkbox" class="check" data-flag="vwAuto" ${s.vwAuto ? 'checked' : ''}> <span>Ärzteversorgung automatisch aus dem Gewinn (8 % bis ${sy + 2}, danach 18 % / 7 %)${s.vwAuto ? `: ${eur(vwNow)} pro Jahr` : ''}</span></label>
-      ${FIELDS.filter(([k]) => !(k === 'vwYear' && s.vwAuto)).map(([k, l, type]) => `<label class="field"><span>${l}</span>
+      ${s.vwAuto ? '' : `<label class="field"><span>Ärzteversorgung fest pro Monat (unabhängig vom Gewinn)</span><input data-vwmonth inputmode="decimal" value="${numStr(Math.round((+s.vwYear || 0) / 12 * 100) / 100)}" placeholder="0"><span class="small muted">= ${eur(+s.vwYear || 0)} pro Jahr</span></label>`}
+      ${FIELDS.filter(([k]) => k !== 'vwYear').map(([k, l, type]) => `<label class="field"><span>${l}</span>
         <input data-set="${k}" ${type === 'date' ? `type="date" value="${s[k] || ''}"` : `inputmode="${type === 'day' ? 'numeric' : 'decimal'}" value="${type === 'day' ? (s[k] || '') : numStr(s[k])}" placeholder="0"`}></label>`).join('')}
       <label class="field"><span>Ärzteversorgung zahlst du</span><select data-setsel="vwInterval">${[['m', 'monatlich'], ['q', 'zum Quartalsende'], ['y', 'zum Jahresende']].map(([k, l]) => `<option value="${k}" ${(s.vwInterval || 'm') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <p class="hint small">Steueranteil am Brutto: ${pct(r.tax)} (Steuer geteilt durch erwartetes Brutto). Entnahme-Regel: ${pct(r.net)} vom Brutto.</p>
@@ -720,6 +721,7 @@ function renderMore() {
     </div>`;
 
   el.querySelectorAll('[data-setyear]').forEach(b => b.onclick = () => { S.setYear = +b.dataset.setyear; renderMore(); });
+  el.querySelector('[data-vwmonth]')?.addEventListener('change', e => { setValue(data, S.setYear, 'vwYear', parseNum(e.target.value) * 12); persist(); });
   el.querySelectorAll('[data-setsel]').forEach(i => i.onchange = () => { setValue(data, S.setYear, i.dataset.setsel, i.value); persist(); });
   el.querySelectorAll('[data-flag]').forEach(i => i.onchange = () => { setValue(data, S.setYear, i.dataset.flag, i.checked); persist(); });
   el.querySelectorAll('[data-set]').forEach(i => i.onchange = () => {
